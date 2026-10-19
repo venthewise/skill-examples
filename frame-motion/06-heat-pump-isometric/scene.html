@@ -1,0 +1,103 @@
+<!doctype html>
+<!-- frame-motion example 06 "MOVES HEAT": isometric explainer. 10 s, 1920x1080, 90 BPM.
+     How a heat pump works in four steps: outdoor coil, compressor, indoor coil, expansion valve, with refrigerant
+     beads flowing round one pipe loop (their positions are a closed-form function of t, so seek stays pure).
+     Isometric boxes are flat-shaded tints of one ink; cold is blue, hot is orange. One typeface (Sora, OFL).
+     A simplified, generic diagram; not a specific product. -->
+<html><head><meta charset="utf-8">
+<style>
+  @font-face{font-family:"Sora";src:url("../fonts/Sora.woff2") format("woff2");font-weight:100 800;}
+  html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#DDE3DD}
+  #stage{position:absolute;inset:0;width:1920px;height:1080px;overflow:hidden;background:#DDE3DD;font-family:"Sora",sans-serif;color:#1B1F1D}
+  svg{position:absolute;left:0;top:0}
+  text{font-family:"Sora",sans-serif}
+  .t{position:absolute;white-space:nowrap}
+  #steps{left:1360px;top:250px;width:500px}
+  .st{position:relative;font-size:30px;font-weight:500;line-height:1.3;margin-bottom:34px;white-space:normal;color:#1B1F1D}
+  .st b{display:block;font-size:20px;font-weight:700;letter-spacing:3px;margin-bottom:6px}
+  #title{left:110px;top:70px;font-size:64px;font-weight:700;letter-spacing:-2px;line-height:1.05}
+  #title div{overflow:hidden;height:72px} #title span{display:inline-block}
+  #note{left:114px;top:1020px;font-size:18px;font-weight:400;letter-spacing:1px;color:#5E6661}
+</style></head>
+<body><div id="stage">
+<svg id="svg" width="1920" height="1080"><g id="cam"><g id="ground"></g><g id="back"></g><g id="pipe"></g><g id="beads"></g><g id="front"></g><g id="heat"></g><g id="lbl"></g></g></svg>
+<div class="t" id="steps">
+  <div class="st" id="s1"><b>ONE · OUTDOOR COIL</b>Cold refrigerant soaks up heat from outside air, even on a cold day.</div>
+  <div class="st" id="s2"><b>TWO · COMPRESSOR</b>Squeezing the gas makes it much hotter.</div>
+  <div class="st" id="s3"><b>THREE · INDOOR COIL</b>The hot refrigerant gives that heat to the room.</div>
+  <div class="st" id="s4"><b>FOUR · EXPANSION VALVE</b>Pressure drops, it turns cold again, and the loop repeats.</div>
+</div>
+<div class="t" id="title"><div><span id="t1">It moves heat.</span></div><div><span id="t2">It does not make it.</span></div></div>
+<div class="t" id="note">SIMPLIFIED DIAGRAM · NOT A SPECIFIC PRODUCT</div>
+</div>
+<script>
+const clamp=(x,a=0,b=1)=>Math.max(a,Math.min(b,x));
+const lerp=(a,b,p)=>a+(b-a)*p;
+const local=(t,t0,d)=>clamp((t-t0)/d);
+const expoOut=(p,k=8)=>p<=0?0:p>=1?1:(1-Math.exp(-k*p))/(1-Math.exp(-k));
+const expoInOut=(p,k=8)=>p<0.5?(1-expoOut(1-2*p,k))/2:(1+expoOut(2*p-1,k))/2;
+const springCD=(dt,w=18)=>dt<=0?0:1-Math.exp(-w*dt)*(1+w*dt);
+const BPM=90, SPB=60/BPM, B=n=>n*SPB;
+const INK='#1B1F1D', BLUE='#2B59C3', ORANGE='#F26B38', BG='#DDE3DD';
+const S=76, CX=560, CY=380, C30=Math.cos(Math.PI/6), S30=0.5;
+const iso=(x,y,z)=>[CX+(x-y)*C30*S, CY+(x+y)*S30*S-z*S];
+const P=pts=>pts.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ');
+// box faces: top light, left mid, right dark (tints of ink over the background)
+function box(x,y,w,d,h,shade=1){ if(h<=0.001) return '';
+  const a=iso(x,y,h),b=iso(x+w,y,h),c=iso(x+w,y+d,h),e=iso(x,y+d,h),f=iso(x+w,y,0),g=iso(x+w,y+d,0),k=iso(x,y+d,0);
+  return `<polygon points="${P([a,b,c,e])}" fill="#F4F6F2"/><polygon points="${P([e,c,g,k])}" fill="#B9C2BB"/><polygon points="${P([b,c,g,f])}" fill="#8E9A92"/>`+
+         `<polyline points="${P([a,b,c,e,a])}" fill="none" stroke="${INK}" stroke-width="2.2" stroke-linejoin="round"/><polyline points="${P([e,k,g,c])}" fill="none" stroke="${INK}" stroke-width="2.2"/><polyline points="${P([g,f,b])}" fill="none" stroke="${INK}" stroke-width="2.2"/>`; }
+// the pipe loop (iso ground coords at pipe height Z): outdoor (x=1) -> compressor (x=5) -> indoor (x=9) -> valve (x=5, y=4) -> back
+const Z=0.55, LOOP=[[1.6,1.2],[5,1.2],[9.4,1.2],[9.4,4.4],[5,4.4],[1.6,4.4],[1.6,1.2]];
+const SEG=[]; let TOT=0; for(let i=0;i<LOOP.length-1;i++){ const [a,b]=[LOOP[i],LOOP[i+1]]; const L=Math.hypot(b[0]-a[0],b[1]-a[1]); SEG.push({a,b,L,s0:TOT}); TOT+=L; }
+function along(s){ s=((s%TOT)+TOT)%TOT; for(const g of SEG){ if(s<=g.s0+g.L){ const u=(s-g.s0)/g.L; return [lerp(g.a[0],g.b[0],u),lerp(g.a[1],g.b[1],u)]; } } return LOOP[0]; }
+// hot from the compressor (s = 3.4) to the valve (s = 3.4+4.4+3.2+4.4 = 15.4); cold elsewhere
+const S_COMP=3.4, S_VALVE=3.4+4.4+3.2+4.4;
+const hot=s=>{ s=((s%TOT)+TOT)%TOT; return s>=S_COMP&&s<S_VALVE; };
+const $=id=>document.getElementById(id);
+const ground=$('ground'),back=$('back'),pipe=$('pipe'),beads=$('beads'),front=$('front'),heat=$('heat'),lbl=$('lbl'),cam=$('cam');
+const steps=[...document.querySelectorAll('.st')];
+const NB=34;
+window.seek=function(t){
+  // camera: slow push-in all the way through, then a small pull back at b12 for the title
+  const s=lerp(1.0,1.04,t/10)*lerp(1,0.95,expoInOut(local(t,B(12),B(1.5)),6));
+  cam.setAttribute('transform',`translate(${(1-s)*700} ${(1-s)*640}) scale(${s})`);
+  // b0 ground grid draws
+  let gsv=''; const gp=expoOut(local(t,-0.3,B(1.2)),5);
+  for(let i=0;i<=11;i++){ const a=iso(i,0,0), b=iso(i,lerp(0,6,gp),0); gsv+=`<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="${INK}" stroke-opacity=".12" stroke-width="1.5"/>`; }
+  for(let j=0;j<=6;j++){ const a=iso(0,j,0), b=iso(lerp(0,11,gp),j,0); gsv+=`<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="${INK}" stroke-opacity=".12" stroke-width="1.5"/>`; }
+  ground.innerHTML=gsv;
+  // units rise on their beats: outdoor coil b1, compressor b6, indoor coil b8, valve b10
+  const hO=springCD(t-B(0.5),14)*1.6, hC=springCD(t-B(6),14)*1.2, hI=springCD(t-B(8),14)*1.8, hV=springCD(t-B(10),16)*0.7;
+  back.innerHTML=box(0.6,0.4,2,4.8,hO);
+  // pipe draws b3-b5
+  const pd=expoInOut(local(t,B(3),B(2)),5)*TOT; let pts=[]; for(let s2=0;s2<=pd;s2+=0.1) pts.push(iso(...along(s2),Z));
+  pipe.innerHTML=pts.length>1?`<polyline points="${P(pts)}" fill="none" stroke="${INK}" stroke-width="12" stroke-linejoin="round" stroke-linecap="round"/><polyline points="${P(pts)}" fill="none" stroke="#F4F6F2" stroke-width="6" stroke-linejoin="round" stroke-linecap="round"/>`:'';
+  // beads flow from b4.5: phase = integral of a speed that ramps up exponentially (closed form, pure)
+  const t0=B(4.5), v=2.4, tau=0.6, dt=Math.max(0,t-t0); const phase=v*(dt-tau*(1-Math.exp(-dt/tau)));
+  let bs=''; if(t>=t0){ const vis=clamp(dt/0.3); for(let i=0;i<NB;i++){ const sp=i*TOT/NB+phase; const [x,y]=along(sp); const q=iso(x,y,Z);
+      // before the compressor exists (b6) everything stays cold
+      const isHot=hot(sp)&&t>=B(6)+0.15; bs+=`<circle cx="${q[0].toFixed(1)}" cy="${q[1].toFixed(1)}" r="${(9*vis).toFixed(2)}" fill="${isHot?ORANGE:BLUE}"/>`; } }
+  beads.innerHTML=bs;
+  front.innerHTML=box(4.4,0.5,1.2,1.4,hC)+box(8.8,0.5,1.2,4.6,hI)+box(4.6,4.0,0.8,0.8,hV);
+  // heat leaving the indoor coil into the room (b8.5+): orange chevrons drifting up, a pure function of t
+  let hs=''; if(t>B(8.5)){ const a=clamp((t-B(8.5))/0.4); for(let k=0;k<6;k++){ const ph=((t*0.9+k/6)%1); const base=iso(9.4,1.0+k*0.75,2.1+ph*2.4);
+      const o=a*Math.sin(Math.PI*ph); hs+=`<polyline points="${base[0]-18},${base[1]+10} ${base[0]},${base[1]-8} ${base[0]+18},${base[1]+10}" fill="none" stroke="${ORANGE}" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="${o.toFixed(3)}"/>`; } }
+  // cold air drawn in at the outdoor coil (b2+): blue chevrons pointing in
+  if(t>B(2)){ const a=clamp((t-B(2))/0.4); for(let k=0;k<5;k++){ const ph=((t*0.8+k/5)%1); const base=iso(lerp(-2.2,0.3,ph),0.8+k*0.95,1.0);
+      const o=a*Math.sin(Math.PI*ph); hs+=`<polyline points="${base[0]-6},${base[1]-14} ${base[0]+8},${base[1]} ${base[0]-6},${base[1]+14}" fill="none" stroke="${BLUE}" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="${o.toFixed(3)}"/>`; } }
+  heat.innerHTML=hs;
+  // ground labels
+  const lo=expoOut(local(t,B(1.5),0.4)), li=expoOut(local(t,B(8),0.4));
+  const pO=iso(2.2,6.3,0), pI=iso(9.6,6.6,0);
+  lbl.innerHTML=`<text x="${pO[0]}" y="${pO[1]+40}" font-size="22" font-weight="700" letter-spacing="3" fill="${INK}" fill-opacity="${lo}">OUTSIDE</text><text x="${pI[0]}" y="${pI[1]+40}" font-size="22" font-weight="700" letter-spacing="3" fill="${INK}" fill-opacity="${li}">INSIDE</text>`;
+  // the step list builds; the current step is ink, earlier ones fade to grey
+  const ST=[B(1.5),B(6),B(8),B(10)];
+  steps.forEach((el,i)=>{ const p=expoOut(local(t,ST[i],0.45)); const next=i<3?ST[i+1]:1e9; const dim=t>=next?0.38:1;
+    el.style.opacity=(p*dim).toFixed(3); el.style.transform=`translateX(${(1-p)*40}px)`; });
+  $('t1').style.transform=`translateY(${(1-springCD(t-B(12.5),14))*80}px)`; $('t2').style.transform=`translateY(${(1-springCD(t-B(13),14))*80}px)`;
+  $('note').style.opacity=expoOut(local(t,B(13.5),0.4));
+};
+window.seek(0);
+document.fonts.load('700 64px Sora').then(()=>document.fonts.load('500 30px Sora')).then(()=>{window.ready=true;});
+</script></body></html>

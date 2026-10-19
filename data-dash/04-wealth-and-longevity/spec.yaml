@@ -1,0 +1,64 @@
+# Real data: World Bank World Development Indicators, single year (frozen snapshot).
+dashboard:
+  title: Wealth and longevity
+  subtitle: How closely does income per person track life expectancy across the world's economies, and which countries break the pattern?
+  theme: light
+  colors: {accent: "#9A4A12", series: ["#9A4A12", "#1F5F8B", "#2E7D4F", "#7B4F9E", "#A0336B", "#5F6B7A"]}
+  locale: en-GB
+  footnote: Values are for a single reference year (the latest with broad coverage when the snapshot was pulled). GDP per person is in constant international dollars at purchasing-power parity. Aggregates (regions, income groups) are excluded; only economies are shown. Economies missing either indicator are left out. The Central African Republic value in this snapshot is far below its neighbours and pulls the fit down; it is shown as published.
+
+sources:
+  wdi:
+    type: snapshot
+    path: snapshots/wdi_2022.json
+    title: World Bank WDI (SP.DYN.LE00.IN, NY.GDP.PCAP.PP.KD, SP.POP.TOTL)
+    licence: CC BY 4.0 (The World Bank)
+
+datasets:
+  - id: countries
+    title: Economies, reference year
+    description: One row per economy with life expectancy at birth, GDP per person (PPP) and population.
+    query: |
+      select country, iso3, replace(region, ', Afghanistan & Pakistan', '') as region, income_group,
+             round(life_expectancy, 1) as life_years, round(gdp_pc_ppp / 1000, 2) as gdp_k, population / 1e6 as pop_m,
+             round(life_expectancy - (select regr_intercept(life_expectancy, ln(gdp_pc_ppp)) + regr_slope(life_expectancy, ln(gdp_pc_ppp)) * ln(w.gdp_pc_ppp) from wdi), 1) as vs_curve_years
+      from wdi w where life_expectancy is not null and gdp_pc_ppp is not null
+    data_through: "2022-12-31"
+
+filters:
+  - {id: region, type: category, field: region, label: Region}
+  - {id: income, type: category, field: income_group, label: Income group, values: [Low income, Lower middle income, Upper middle income, High income]}
+
+sections:
+  - title: The curve
+    widgets:
+      - {type: kpi, title: Median life expectancy, dataset: countries, value: {field: life_years, agg: median}, format: {type: number, decimals: 1}, units: years, delta: none}
+      - {type: kpi, title: Median GDP per person, dataset: countries, value: {field: gdp_k, agg: median}, format: {type: number, decimals: 1}, units: thousand intl $ (PPP), delta: none}
+      - {type: kpi, title: Longest-lived, dataset: countries, value: {field: life_years, agg: max}, detail_field: country, format: {type: number, decimals: 1}, units: years, delta: none}
+      - {type: kpi, title: Economies shown, dataset: countries, value: {agg: count}, units: economies, delta: none}
+      - {type: scatter, title: Income vs life expectancy, subtitle: Each dot an economy; gains flatten as income rises, dataset: countries, x: gdp_k, x_label: GDP per person, x_units: thousand intl $ (PPP), y: life_years, units: years, label_field: country, series: region, max_series: 7, span: 8, height: 440}
+      - {type: bar, title: Life expectancy by income group, dataset: countries, x: income_group, orientation: horizontal, x_plural: groups, y: {field: life_years, agg: median}, format: {type: number, decimals: 1}, units: years (median), colors: ["#B8783F", "#9A4A12", "#73360C", "#4A2206"], span: 4, height: 440}
+  - title: Outliers
+    widgets:
+      - type: table
+        title: Furthest above the curve
+        subtitle: Years of life expectancy above what a log-income fit across all economies predicts
+        dataset: countries
+        sort: {field: vs_curve_years, dir: desc}
+        limit: 12
+        span: 6
+        columns:
+          - {field: country, label: Economy}
+          - {field: life_years, label: Life expectancy, units: years, format: {type: number, decimals: 1}}
+          - {field: vs_curve_years, label: Vs curve, units: years, format: {type: number, decimals: 1, sign: true}}
+      - type: table
+        title: Furthest below the curve
+        subtitle: Same fit; negative means shorter lives than income predicts
+        dataset: countries
+        sort: {field: vs_curve_years, dir: asc}
+        limit: 12
+        span: 6
+        columns:
+          - {field: country, label: Economy}
+          - {field: life_years, label: Life expectancy, units: years, format: {type: number, decimals: 1}}
+          - {field: vs_curve_years, label: Vs curve, units: years, format: {type: number, decimals: 1, sign: true}}

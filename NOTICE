@@ -1,0 +1,77 @@
+skill-examples
+Copyright (c) 2026 Paolo Libertad. The scenes, specs, scripts, READMEs and
+rendered media in this repository are licensed under the MIT License (LICENSE),
+except for the third-party components and data listed below, which keep their
+own licences.
+
+=====================================================================
+1. Data (data-dash snapshots, and the CO2 series in frame-motion/05)
+=====================================================================
+Each snapshot file records `pulled_from`, `pulled_at` (2026-10-19 06:52 UTC),
+`licence` and the exact query. Values are reshaped only in each spec's SQL.
+
+- data-dash/01-keeling-curve, frame-motion/05-keeling-chart-story:
+  NOAA Global Monitoring Laboratory, Mauna Loa CO2 monthly means,
+  https://gml.noaa.gov/ccgg/trends/ . Freely available U.S. Government work.
+  Cite: Lan, X., Tans, P. and K.W. Thoning, NOAA GML; Scripps Institution of
+  Oceanography (C.D. Keeling) for data before May 1974.
+- data-dash/02-warming-stripes-heatmap: NASA GISS Surface Temperature Analysis
+  (GISTEMP v4), https://data.giss.nasa.gov/gistemp/ . Public domain (NASA).
+  Cite: GISTEMP Team, NASA Goddard Institute for Space Studies; Lenssen et al. 2019.
+- data-dash/03-uk-grid-mix: Carbon Intensity API, https://carbonintensity.org.uk/ ,
+  National Energy System Operator (NESO). CC BY 4.0.
+- data-dash/04-wealth-and-longevity: World Bank World Development Indicators,
+  https://data.worldbank.org/ . CC BY 4.0, The World Bank.
+- data-dash/05-fireballs: NASA/JPL CNEOS Fireball and Bolide Data API,
+  https://cneos.jpl.nasa.gov/fireballs/ . Freely available; credit NASA/JPL-Caltech.
+- data-dash/06-near-earth-flybys: NASA/JPL SBDB Close-Approach Data API,
+  https://ssd-api.jpl.nasa.gov/doc/cad.html . Freely available; credit NASA/JPL-Caltech.
+- data-dash/07-five-cities-one-year: Open-Meteo Historical Weather API,
+  https://open-meteo.com/ . CC BY 4.0. Contains modified Copernicus Climate
+  Change Service information (ERA5).
+- data-dash/08-sky-events-on-wikipedia: Wikimedia pageviews REST API,
+  https://wikimedia.org/api/rest_v1/ . CC0 1.0, Wikimedia Foundation.
+- data-dash/09-exoplanet-census: NASA Exoplanet Archive,
+  https://exoplanetarchive.ipac.caltech.edu/ . "This research has made use of
+  the NASA Exoplanet Archive, which is operated by the California Institute of
+  Technology, under contract with the National Aeronautics and Space
+  Administration under the Exoplanet Exploration Program."
+- data-dash/10-bakery-ops-example: EXAMPLE DATA, seeded synthetic numbers for
+  a fictional bakery. Not real. MIT with the rest of the repo.
+
+Brands, places, channels, festivals and timetables in frame-motion/04, 08, 09
+and 10 are fictional.
+
+=====================================================================
+2. Apache ECharts (embedded in every data-dash/*/index.html)
+=====================================================================
+Apache ECharts 6.1.0. Copyright 2017-2026 The Apache Software Foundation.
+Licensed under the Apache License, Version 2.0 (LICENSES/ECharts-LICENSE.txt).
+This product includes software developed at The Apache Software Foundation
+(https://www.apache.org/). See LICENSES/ECharts-NOTICE.txt.
+ECharts includes code derived from d3.js, Copyright 2010-2016 Mike Bostock,
+BSD 3-Clause (LICENSES/ECharts-LICENSE-d3.txt).
+The minified library is inlined, unmodified and with its licence banner, into
+each built dashboard HTML by the data-dash skill.
+
+=====================================================================
+3. Fonts
+=====================================================================
+Inter (Latin subset, embedded in every data-dash/*/index.html as a data URI):
+  Copyright (c) 2016 The Inter Project Authors (https://github.com/rsms/inter).
+  SIL Open Font License 1.1 (LICENSES/Inter-OFL.txt).
+
+frame-motion/fonts/*.woff2 are Latin subsets (made with fontTools pyftsubset;
+no glyphs modified) of the following fonts, each licensed under the SIL Open
+Font License, Version 1.1 (LICENSES/OFL-1.1.txt). None of these families
+declares a Reserved Font Name, so subsets may keep the original names.
+  - Fraunces (fonts/Fraunces.woff2, used by 01-one-line): Copyright 2018 The Fraunces Project Authors (https://github.com/undercasetype/Fraunces)
+  - JetBrains Mono (fonts/JetBrainsMono.woff2, used by 02-galton-board): Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono)
+  - Syne (fonts/Syne.woff2, used by 03-rising-contours): Copyright 2017 The Syne Project Authors (https://gitlab.com/bonjour-monde/fonderie/syne-typeface)
+  - Anton (fonts/Anton.woff2, used by 04-kolm-social-ad): Copyright 2020 The Anton Project Authors (https://github.com/googlefonts/AntonFont.git)
+  - Space Grotesk (fonts/SpaceGrotesk.woff2, used by 05-keeling-chart-story): Copyright 2020 The Space Grotesk Project Authors (https://github.com/floriankarsten/space-grotesk)
+  - Sora (fonts/Sora.woff2, used by 06-heat-pump-isometric): Copyright 2019 The Sora Project Authors (https://github.com/sora-xor/sora-font)
+  - Unbounded (fonts/Unbounded.woff2, used by 07-truchet-loop): Copyright 2022 The Unbounded Project Authors (https://github.com/googlefonts/unbounded)
+  - VT323 (fonts/VT323.woff2, used by 08-teletext-sky): Copyright 2011, The VT323 Project Authors (peter.hull@oikoi.com)
+  - Familjen Grotesk (fonts/FamiljenGrotesk.woff2, used by 09-night-ferry-route): Copyright 2021 The Familjen Grotesk Project Authors (https://github.com/Familjen-Sthlm/Familjen-Grotesk)
+  - Bodoni Moda (fonts/BodoniModa.woff2, used by 10-slow-poster): Copyright 2020 The Bodoni Moda Project Authors (https://github.com/indestructible-type/Bodoni)

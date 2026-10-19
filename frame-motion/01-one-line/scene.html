@@ -1,0 +1,87 @@
+<!doctype html>
+<!-- frame-motion example 01 "ONE LINE": SVG line drawing + point-list morphing. 8 s, 1920x1080, 120 BPM.
+     One continuous ink stroke is drawn as a sun, morphs into a mountain ridge, then a travelling seismograph
+     trace, then flattens into the horizon the title sits on. The vermilion nib is the pen tip and never leaves it.
+     Pure seek(t): every frame is computed from t alone. Seeded PRNG for the ridge. Local font (Fraunces, OFL). -->
+<html><head><meta charset="utf-8">
+<style>
+  @font-face{font-family:"Fraunces";src:url("../fonts/Fraunces.woff2") format("woff2");font-weight:100 900;}
+  html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#EEE8DC}
+  #stage{position:absolute;inset:0;width:1920px;height:1080px;overflow:hidden;background:#EEE8DC;font-family:"Fraunces",serif;color:#161514}
+  svg{position:absolute;left:0;top:0}
+  .t{position:absolute;white-space:nowrap}
+  #title{left:150px;top:462px;height:300px;overflow:hidden;clip-path:inset(0 -60px 46px 0);font-size:290px;font-weight:300;letter-spacing:-9px;line-height:300px;font-variation-settings:"opsz" 144,"SOFT" 50}
+  #title span{display:inline-block}
+  #cap{left:162px;top:748px;font-size:34px;font-weight:400;font-style:normal;color:#77726A;letter-spacing:.3px}
+  #idx{left:160px;top:96px;font-size:26px;font-weight:600;letter-spacing:5px;color:#77726A}
+  #lbl{font-size:26px;font-weight:500;color:#77726A;letter-spacing:1px}
+</style></head>
+<body><div id="stage">
+<svg id="svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+  <g id="cam"><path id="ink" fill="none" stroke="#161514" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle id="nib" r="13" fill="#D2462A"/></g>
+</svg>
+<div class="t" id="idx">STUDY ONE &nbsp;·&nbsp; A SINGLE STROKE</div>
+<div class="t" id="lbl"></div>
+<div class="t" id="title"></div>
+<div class="t" id="cap">drawn once, never lifted</div>
+</div>
+<script>
+const clamp=(x,a=0,b=1)=>Math.max(a,Math.min(b,x));
+const lerp=(a,b,p)=>a+(b-a)*p;
+const local=(t,t0,d)=>clamp((t-t0)/d);
+const expoOut=(p,k=8)=>p<=0?0:p>=1?1:(1-Math.exp(-k*p))/(1-Math.exp(-k));
+const expoInOut=(p,k=8)=>p<0.5?(1-expoOut(1-2*p,k))/2:(1+expoOut(2*p-1,k))/2;
+const springCD=(dt,w=18)=>dt<=0?0:1-Math.exp(-w*dt)*(1+w*dt);
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+const N=420, X0=160, X1=1760;
+// ridge: seeded sum of sines + one dominant peak, built once
+const rnd=mulberry32(1907); const RW=[...Array(6)].map((_,i)=>({f:1+i*0.9+rnd()*0.8,ph:rnd()*6.28,a:(60-i*8)*(0.6+rnd()*0.5)}));
+const ridgeY=u=>{let y=0;RW.forEach(w=>y+=w.a*Math.sin(w.f*u*6.283+w.ph));const pk=Math.exp(-Math.pow((u-0.62)/0.08,2))*230;return 640-pk-y*Math.sin(Math.PI*u);};
+const shapes={
+  sun:(u,t)=>{const a=2*Math.PI*u, cy=540-90*expoOut(local(t,0,2.2),3);return [960-250*Math.cos(a),cy-250*Math.sin(a)];},
+  ridge:(u)=>[lerp(X0,X1,u),ridgeY(u)],
+  wave:(u,t)=>{const env=Math.exp(-Math.pow((u-lerp(0.15,0.85,local(t,4,2)))/0.12,2));const s=Math.sin(u*130-t*22)*0.6+Math.sin(u*57-t*9)*0.4;return [lerp(X0,X1,u),560+s*(16+190*env)];},
+  flat:(u)=>[lerp(X0,X1,u),720]
+};
+const ink=document.getElementById('ink'),nib=document.getElementById('nib'),cam=document.getElementById('cam');
+const title=document.getElementById('title'),cap=document.getElementById('cap'),idx=document.getElementById('idx'),lbl=document.getElementById('lbl');
+const LETTERS=[..."one line"].map(c=>{const s=document.createElement('span');s.textContent=c===' '?'\u00a0':c;title.appendChild(s);return s;});
+function pointAt(u,t){
+  // morph chain with a left-to-right stagger along u
+  const st=u*0.35;
+  const a=expoInOut(local(t,2.0+st,0.85),7), b=expoInOut(local(t,4.0+st,0.7),7), c=springCD(t-(6.0+st*0.6),9);
+  let p=shapes.sun(u,t), q;
+  if(a>0){q=shapes.ridge(u);p=[lerp(p[0],q[0],a),lerp(p[1],q[1],a)];}
+  if(b>0){q=shapes.wave(u,t);p=[lerp(p[0],q[0],b),lerp(p[1],q[1],b)];}
+  if(c>0){q=shapes.flat(u);p=[lerp(p[0],q[0],c),lerp(p[1],q[1],c)];}
+  return p;
+}
+window.seek=function(t){
+  // camera: one slow push for the whole piece (never a dead hold)
+  const s=lerp(1,1.035,t/8); cam.setAttribute('transform',`translate(${960-960*s} ${540-540*s}) scale(${s})`);
+  // drawing: the stroke is laid down 0.0-1.0 s (two beats), nib at the head
+  const f=expoOut(local(t,-0.12,1.12),4)*N;
+  const n=Math.max(1,Math.floor(f)); let d='';
+  let head=pointAt(0,t);
+  for(let i=0;i<=Math.min(n,N);i++){const p=pointAt(i/N,t);d+=(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1);head=p;}
+  if(n<N){const p=pointAt(f/N,t);d+='L'+p[0].toFixed(1)+' '+p[1].toFixed(1);head=p;}
+  ink.setAttribute('d',d);
+  // after the draw, the nib travels with the morph: it rides the last point until b12, then slides back to the start of the horizon
+  if(t>1.0){const ride=springCD(t-6.4,10);const u=lerp(1,0,ride);const p=pointAt(clamp(u),t);head=p;}
+  nib.setAttribute('cx',head[0].toFixed(1)); nib.setAttribute('cy',head[1].toFixed(1));
+  nib.setAttribute('r',(13*springCD(t,24)).toFixed(2));
+  // index line top-left, ticks over at each scene change
+  const ip=expoOut(local(t,0.5,0.4)); idx.style.opacity=ip; idx.style.transform=`translateY(${(1-ip)*14}px)`;
+  // small label tracks the shape name, lands on b4 / b8 / b12
+  const names=[[1.0,'sun'],[3.0,'ridge'],[4.75,'tremor'],[6.0,'']];
+  let nm=''; names.forEach(([tt,s])=>{if(t>=tt)nm=s;});
+  const lp=expoOut(local(t,[1.0,3.0,4.75,6.0].filter(x=>x<=t).pop()||0,0.3));
+  lbl.textContent=nm; lbl.style.left='160px'; lbl.style.top='980px'; lbl.style.opacity=nm?lp:0;
+  // title rises out of the horizon, letter by letter from b12 (6.0 s)
+  LETTERS.forEach((L,i)=>{const p=springCD(t-(6.25+i*0.05),16);L.style.transform=`translateY(${(1-p)*300}px)`;});
+  const cp=expoOut(local(t,7.0,0.45)); cap.style.opacity=cp; cap.style.transform=`translateX(${(1-cp)*-30}px)`;
+};
+window.seek(0);
+Promise.all([document.fonts.load('300 200px Fraunces'),document.fonts.load('600 26px Fraunces')]).then(()=>document.fonts.ready).then(()=>{window.ready=true;});
+</script></body></html>

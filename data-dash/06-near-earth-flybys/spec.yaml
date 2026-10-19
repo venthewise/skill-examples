@@ -1,0 +1,61 @@
+# Real data: NASA/JPL SBDB Close-Approach Data API, asteroids passing within a set distance of Earth (frozen snapshot).
+dashboard:
+  title: Near-Earth flybys
+  subtitle: How many asteroids slipped between Earth and the Moon recently, how close did the closest come, and are we simply getting better at seeing them?
+  theme: dark
+  colors: {accent: "#7EB6FF", series: ["#BFD9FF", "#7EB6FF", "#5677A6"]}
+  allow_terms: [LD]
+  locale: en-GB
+  footnote: Distances are nominal close-approach distances from the centre of Earth, converted from astronomical units to lunar distances (LD, the mean Earth–Moon distance). The snapshot keeps approaches within about eight lunar distances. Absolute magnitude H is a proxy for size; lower H means a larger object. Rising counts mostly reflect more and better sky surveys, not more asteroids.
+
+sources:
+  cad:
+    type: snapshot
+    path: snapshots/close_approaches.json
+    title: NASA/JPL SBDB Close-Approach Data API
+    licence: Freely available; credit NASA/JPL-Caltech
+
+datasets:
+  - id: flybys
+    title: Close approaches to Earth
+    description: One row per close approach; distance in lunar distances, speed relative to Earth in km/s.
+    query: |
+      select strptime(cd, '%Y-%b-%d %H:%M') as approach_time,
+             strftime(strptime(cd, '%Y-%b-%d %H:%M'), '%Y-%m-%d %H:%M') as approach_label,
+             trim(des) as designation,
+             round(cast(dist as double) * 389.1724, 3) as dist_ld,
+             round(cast(v_rel as double), 2) as speed_kms,
+             try_cast(h as double) as h_mag,
+             case when cast(dist as double) * 389.1724 < 1 then 'Inside the Moon''s orbit'
+                  when cast(dist as double) * 389.1724 < 3 then 'Within three LD' else 'Farther out' end as band
+      from cad order by approach_time
+    date_column: approach_time
+    data_through: "2026-10-18"
+
+filters:
+  - {id: date, type: date_range, label: Approach time (UTC)}
+  - {id: band, type: category, field: band, label: Distance band, values: [Inside the Moon's orbit, Within three LD, Farther out]}
+
+sections:
+  - title: Traffic
+    widgets:
+      - {type: kpi, title: Inside the Moon's orbit, dataset: flybys, where: [{field: band, op: "=", value: "Inside the Moon's orbit"}], value: {agg: count}, units: flybys, window: {months: 12}, delta: pct, good: neutral}
+      - {type: kpi, title: Closest approach, dataset: flybys, value: {field: dist_ld, agg: min}, detail_field: designation, format: {type: number, decimals: 3}, units: LD, window: {months: 12}, delta: none}
+      - {type: kpi, title: Fastest flyby, dataset: flybys, value: {field: speed_kms, agg: max}, detail_field: designation, format: {type: number, decimals: 1}, units: km/s, window: {months: 12}, delta: none}
+      - {type: stacked_bar, title: Flybys per year, subtitle: Distance band split; growth tracks survey capacity, dataset: flybys, x: approach_time, grain: year, y: {agg: count}, series: band, series_order: [Inside the Moon's orbit, Within three LD, Farther out], colors: ["#BFD9FF", "#7EB6FF", "#5677A6"], units: flybys, span: 8, height: 340}
+      - {type: line, title: Smaller every year, subtitle: Median absolute magnitude of everything found passing close; higher means fainter and smaller, dataset: flybys, x: approach_time, grain: year, y: {field: h_mag, agg: median, label: Median H}, format: {type: number, decimals: 1}, units: H mag, y_scale: true, span: 4, height: 340}
+  - title: Objects
+    widgets:
+      - {type: scatter, title: Size proxy vs miss distance, subtitle: Lower H is bigger; the faint ones are only found when very close, dataset: flybys, x: dist_ld, x_label: Miss distance, x_units: LD, y: h_mag, units: H mag, y_inverse: true, label_field: designation, span: 6, height: 380}
+      - type: table
+        title: Closest shaves
+        dataset: flybys
+        sort: {field: dist_ld, dir: asc}
+        limit: 12
+        span: 6
+        columns:
+          - {field: designation, label: Object}
+          - {field: approach_label, label: When (UTC)}
+          - {field: dist_ld, label: Distance, units: LD, format: {type: number, decimals: 3}}
+          - {field: speed_kms, label: Speed, units: km/s, format: {type: number, decimals: 1}}
+          - {field: h_mag, label: H, units: mag, format: {type: number, decimals: 1}, hide_mobile: true}

@@ -1,0 +1,47 @@
+# Real data: Open-Meteo historical weather API (ERA5 reanalysis), daily values for five cities (frozen snapshot).
+dashboard:
+  title: Five cities, one year of weather
+  subtitle: Over the same twelve months, how differently did Reykjavík, Cairo, Singapore, Buenos Aires and Anchorage heat up, cool down, soak and bask?
+  theme: light
+  colors: {accent: "#2F5D8A", series: ["#2F5D8A", "#C2571A", "#1E7F6E", "#8E3B8E", "#6B6B2A"]}
+  locale: en-GB
+  footnote: Daily values are model reanalysis (ERA5 via Open-Meteo) at each city's coordinates, not station readings. Days run midnight to midnight in UTC. Sunshine duration is the time the direct solar radiation exceeds the WMO threshold. Buenos Aires is in the Southern Hemisphere, so its summer sits in the middle of the northern winter.
+
+sources:
+  om:
+    type: snapshot
+    path: snapshots/daily_weather.json
+    title: Open-Meteo historical weather API (ERA5)
+    licence: CC BY 4.0 (Open-Meteo; contains modified Copernicus Climate Change Service information)
+
+datasets:
+  - id: daily
+    title: Daily weather, five cities
+    description: Daily maximum and minimum air temperature at two metres, precipitation sum and sunshine duration.
+    query: |
+      select replace(replace(city, '_', ' '), 'Reykjavik', 'Reykjavík') as city, date::date as day,
+             tmax_c, tmin_c, round(tmax_c - tmin_c, 1) as range_c, precip_mm,
+             round(sunshine_s / 3600, 2) as sun_h,
+             case when precip_mm >= 1 then 1 else 0 end as wet_day
+      from om order by city, day
+    date_column: day
+    data_through: {column: day}
+
+filters:
+  - {id: city, type: category, field: city, label: City, values: [Reykjavík, Anchorage, Cairo, Singapore, Buenos Aires]}
+  - {id: date, type: date_range, label: Day (UTC)}
+
+sections:
+  - title: Temperature
+    widgets:
+      - {type: kpi, title: Hottest day, dataset: daily, value: {field: tmax_c, agg: max}, detail_field: city, format: {type: number, decimals: 1}, units: °C, window: {months: 12}, delta: none}
+      - {type: kpi, title: Coldest night, dataset: daily, value: {field: tmin_c, agg: min}, detail_field: city, format: {type: number, decimals: 1}, units: °C, window: {months: 12}, delta: none}
+      - {type: kpi, title: Wet days, dataset: daily, value: {field: wet_day, agg: sum}, units: city-days, window: {months: 12}, delta: none}
+      - {type: kpi, title: Sunshine, dataset: daily, value: {field: sun_h, agg: sum}, format: {type: number, decimals: 0}, units: hours, window: {months: 12}, delta: none}
+      - {type: line, title: "Daily high, weekly mean", dataset: daily, x: day, grain: week, y: {field: tmax_c, agg: avg}, series: city, series_order: [Reykjavík, Anchorage, Cairo, Singapore, Buenos Aires], format: {type: number, decimals: 1}, units: °C, span: 12, height: 340}
+      - {type: heatmap, title: Temperature calendar, subtitle: Monthly mean daily high; the scale starts at freezing so colder months read pale, dataset: daily, x: day, grain: month, y: city, y_order: [Reykjavík, Anchorage, Cairo, Singapore, Buenos Aires], value: {field: tmax_c, agg: avg}, format: {type: number, decimals: 1}, units: °C, span: 7}
+      - {type: bar, title: Day–night swing, subtitle: Mean gap between the daily high and low, dataset: daily, x: city, orientation: horizontal, x_plural: cities, y: {field: range_c, agg: avg}, format: {type: number, decimals: 1}, units: °C, span: 5, height: 260}
+  - title: Rain and sun
+    widgets:
+      - {type: stacked_bar, title: Monthly rainfall, dataset: daily, x: day, grain: month, y: {field: precip_mm, agg: sum}, series: city, series_order: [Reykjavík, Anchorage, Cairo, Singapore, Buenos Aires], format: {type: number, decimals: 0}, units: mm, span: 7, height: 340}
+      - {type: bar, title: Hours of sunshine, dataset: daily, x: city, orientation: horizontal, x_plural: cities, y: {field: sun_h, agg: sum}, format: {type: number, decimals: 0}, units: hours, span: 5, height: 340}

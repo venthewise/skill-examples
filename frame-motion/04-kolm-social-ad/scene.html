@@ -1,0 +1,89 @@
+<!doctype html>
+<!-- frame-motion example 04 "KOLM": 9:16 kinetic social ad for a FICTIONAL cold-brew brand. 8 s, 1080x1920, 128 BPM.
+     Hard-edged colour panels wipe on the beat, three huge words slam in, then the same three words shrink into
+     the can's label (persistent-object handoff) and the brand mark lands. Soundtrack: soundtrack.html (Web Audio,
+     same BPM and hit times), muxed to -14 LUFS. One typeface (Anton, OFL). Black, bone, one orange. -->
+<html><head><meta charset="utf-8">
+<style>
+  @font-face{font-family:"Anton";src:url("../fonts/Anton.woff2") format("woff2");}
+  html,body{margin:0;width:1080px;height:1920px;overflow:hidden;background:#0D0D0D}
+  #stage{position:absolute;inset:0;width:1080px;height:1920px;overflow:hidden;background:#0D0D0D;font-family:"Anton",sans-serif;color:#F2EDE4}
+  .p{position:absolute;left:0;top:0;width:1080px;height:1920px}
+  .w{position:absolute;left:72px;font-size:330px;line-height:1;letter-spacing:-4px;white-space:nowrap;transform-origin:0 100%}
+  .s{position:absolute;left:78px;font-size:52px;letter-spacing:3px;white-space:nowrap}
+  #can{position:absolute;left:600px;width:330px;height:620px;background:#F2EDE4;border-radius:26px 26px 18px 18px;overflow:hidden}
+  #canlid{position:absolute;left:0;top:0;width:330px;height:34px;background:#0D0D0D;opacity:.18}
+  #canband{position:absolute;left:0;top:250px;width:330px;height:150px;background:#FF5A1F}
+  #canword{position:absolute;left:24px;top:262px;font-size:120px;line-height:1;color:#0D0D0D;letter-spacing:2px}
+  #brand{position:absolute;left:66px;top:1240px;font-size:300px;line-height:1;letter-spacing:6px;white-space:nowrap}
+  #tag{position:absolute;left:76px;top:1570px;font-size:30px;letter-spacing:4px;color:#8C877E;white-space:nowrap}
+</style></head>
+<body><div id="stage">
+  <div class="p" id="pO" style="background:#FF5A1F"></div>
+  <div class="p" id="pB" style="background:#F2EDE4"></div>
+  <div class="p" id="pK" style="background:#0D0D0D"></div>
+  <div class="w" id="w1">WATER.</div>
+  <div class="w" id="w2">BEANS.</div>
+  <div class="w" id="w3">TIME.</div>
+  <div class="p" id="inkB"><div class="w" id="v1">WATER.</div><div class="w" id="v2">BEANS.</div><div class="w" id="v3">TIME.</div></div>
+  <div id="bar" style="position:absolute;left:78px;top:1478px;height:22px;width:930px;background:#FF5A1F;transform-origin:0 0"></div>
+  <div class="s" id="s1">STEEPED COLD, OVERNIGHT</div>
+  <div id="can"><div id="canlid"></div><div id="canband"></div><div id="canword">KOLM</div></div>
+  <div class="s" id="s2">THREE INGREDIENTS.</div>
+  <div class="s" id="s3">NO SHORTCUTS.</div>
+  <div id="brand">KOLM</div>
+  <div id="tag">COLD BREW · A FICTIONAL BRAND</div>
+</div>
+<script>
+const clamp=(x,a=0,b=1)=>Math.max(a,Math.min(b,x));
+const lerp=(a,b,p)=>a+(b-a)*p;
+const local=(t,t0,d)=>clamp((t-t0)/d);
+const expoOut=(p,k=8)=>p<=0?0:p>=1?1:(1-Math.exp(-k*p))/(1-Math.exp(-k));
+const expoInOut=(p,k=8)=>p<0.5?(1-expoOut(1-2*p,k))/2:(1+expoOut(2*p-1,k))/2;
+const springCD=(dt,w=18)=>dt<=0?0:1-Math.exp(-w*dt)*(1+w*dt);
+const BPM=128, SPB=60/BPM, B=n=>n*SPB;
+const $=id=>document.getElementById(id);
+const v1=$('v1'),v2=$('v2'),v3=$('v3'),inkB=$('inkB');
+const pO=$('pO'),pB=$('pB'),pK=$('pK'),w1=$('w1'),w2=$('w2'),w3=$('w3'),s1=$('s1'),s2=$('s2'),s3=$('s3'),can=$('can'),brand=$('brand'),tag=$('tag');
+// word colours follow the panel they sit on
+window.seek=function(t){
+  // --- panels: hard-edged wipes on b2 (orange up), b4 (bone from left), b8 (black back down from top)
+  const o=expoInOut(local(t,B(2),SPB*0.6),9);  pO.style.clipPath=`inset(${(1-o)*100}% 0 0 0)`;
+  const b=expoInOut(local(t,B(4),SPB*0.6),9);  pB.style.clipPath=`inset(0 ${(1-b)*100}% 0 0)`;
+  const k=expoInOut(local(t,B(8),SPB*0.7),9);  pK.style.clipPath=`inset(0 0 ${(1-k)*100}% 0)`;
+  // --- the three words: each slams in on its beat (scale 1.18 -> 1, critically damped), stacking downwards
+  const ink=(t<B(2))?'#F2EDE4':'#0D0D0D';
+  // ink layer: the same words in black, clipped to the light panels (orange from below, minus the black wipe from above)
+  inkB.style.clipPath=`inset(${Math.max(1920*(1-o),1920*k).toFixed(1)}px 0 0 0)`;
+  [[w1,B(0),820,v1],[w2,B(2),1140,v2],[w3,B(4),1460,v3]].forEach(([el,t0,y,el2],i)=>{
+    const p=springCD(t-t0+0.02,26);
+    // b8: words shrink and fly into the can label column (handoff), staying the same elements
+    const h=expoInOut(local(t,B(8),SPB*1.5),7);
+    const sc=lerp(lerp(1.18,1,p),0.30,h);
+    const x=lerp(72,96,h), yy=lerp(y,660+i*104,h);
+    el.style.transform=`translate(${x-72}px,${yy-y}px) scale(${sc})`;
+    el.style.transformOrigin='0 100%';
+    el.style.top=(y-330)+'px';
+    el.style.opacity=t<t0?0:1;
+    el.style.color='#F2EDE4';
+    el2.style.transform=el.style.transform; el2.style.transformOrigin=el.style.transformOrigin; el2.style.top=el.style.top; el2.style.opacity=el.style.opacity; el2.style.color='#0D0D0D';
+  });
+  // small line under the stack on b6
+  const sp=expoOut(local(t,B(6),0.35)); s1.style.top='1530px'; s1.style.opacity=sp*(1-local(t,B(8),0.2)); s1.style.transform=`translateX(${(1-sp)*-60}px)`; s1.style.color='#0D0D0D';
+  const bar=$('bar'); const bw=local(t,B(5),B(3)); bar.style.transform=`scaleX(${bw})`; bar.style.opacity=(t<B(5)||t>B(8)+SPB*0.35)?0:1;
+  // --- can rises from below on b9, label band is the orange panel shrunk
+  const cp=springCD(t-B(9),13); can.style.top=(lerp(2000,420,cp)-40*local(t,B(9),8-B(9)))+'px';
+  // --- claims on b12 / b13
+  const c2=expoOut(local(t,B(12),0.3)), c3=expoOut(local(t,B(13),0.3));
+  s2.style.top='1000px'; s3.style.top='1068px'; s2.style.opacity=c2; s3.style.opacity=c3;
+  s2.style.transform=`translateY(${(1-c2)*30}px)`; s3.style.transform=`translateY(${(1-c3)*30}px)`; s3.style.color='#FF5A1F';
+  // --- brand mark on b14, letter-spacing closes on a spring; tag on b15
+  const bp=springCD(t-B(14),16); brand.style.opacity=t<B(14)?0:1; brand.style.letterSpacing=lerp(60,6,bp)+'px'; brand.style.transform=`translateY(${(1-bp)*140}px)`;
+  brand.style.clipPath='inset(0 0 0 0)';
+  const tp=expoOut(local(t,B(15),0.3)); tag.style.opacity=tp;
+  // camera language: a constant slow drift upward of the whole frame content (never a dead hold)
+  document.getElementById('stage').style.transform='none';
+};
+window.seek(0);
+document.fonts.load('330px Anton').then(()=>{window.ready=true;});
+</script></body></html>

@@ -1,0 +1,61 @@
+# Real data: NASA/JPL CNEOS fireball and bolide reports (frozen snapshot).
+dashboard:
+  title: Fireballs over Earth
+  subtitle: How often do bright bolides explode in our atmosphere, how much energy do they carry, and how high up do they burst?
+  theme: dark
+  colors: {accent: "#FFB347", series: ["#FFB347", "#6FC3DF", "#C9A0FF", "#A8B3C2"]}
+  locale: en-GB
+  footnote: Reports come from U.S. Government sensors and are published by the Center for Near Earth Object Studies. Coverage is not uniform and detection thresholds changed over time, so early years undercount small events. Impact energy is the estimated total in kilotons of TNT; altitude and velocity are missing for many events.
+
+sources:
+  fb:
+    type: snapshot
+    path: snapshots/fireballs.json
+    title: NASA/JPL CNEOS fireball API
+    licence: Freely available; credit NASA/JPL-Caltech CNEOS
+
+datasets:
+  - id: events
+    title: Fireball events
+    description: One row per reported fireball; numeric fields parsed from strings, hemisphere from the latitude direction.
+    query: |
+      select date::timestamp as peak_time,
+             strftime(date::timestamp, '%Y-%m-%d %H:%M') as peak_label,
+             try_cast("impact-e" as double) as impact_kt,
+             try_cast(energy as double) as radiated_e10j,
+             try_cast(alt as double) as alt_km, try_cast(vel as double) as vel_kms,
+             case "lat-dir" when 'N' then 'Northern' when 'S' then 'Southern' else 'Unknown' end as hemisphere,
+             case when lat is null then 'not given' else lat || '° ' || "lat-dir" || ', ' || lon || '° ' || "lon-dir" end as location,
+             case when lat is null then 'Not given' when try_cast(lat as double) < 23.5 then 'Tropics' when try_cast(lat as double) < 66.5 then 'Mid-latitudes' else 'Polar' end as lat_band,
+             case when try_cast("impact-e" as double) >= 1 then 'Kiloton and up' when try_cast("impact-e" as double) >= 0.1 then 'Tenth of a kiloton' else 'Smaller' end as size_band
+      from fb order by peak_time
+    date_column: peak_time
+    data_through: "2026-10-18"
+
+filters:
+  - {id: date, type: date_range, label: Peak time (UTC), presets: [{label: All}, {label: Last ten years, years: 10}]}
+  - {id: hemisphere, type: category, field: hemisphere, label: Hemisphere}
+
+sections:
+  - title: Rate
+    widgets:
+      - {type: kpi, title: Fireballs, dataset: events, value: {agg: count}, units: events, window: {months: 12}, delta: pct, good: neutral}
+      - {type: kpi, title: Largest impact energy, dataset: events, value: {field: impact_kt, agg: max}, detail_field: peak_label, format: {type: number, decimals: 2}, units: kt TNT, window: {months: 12}, delta: none}
+      - {type: kpi, title: Median burst altitude, dataset: events, value: {field: alt_km, agg: median}, format: {type: number, decimals: 1}, units: km, window: {months: 12}, delta: abs, good: neutral}
+      - {type: kpi, title: Median entry speed, dataset: events, value: {field: vel_kms, agg: median}, format: {type: number, decimals: 1}, units: km/s, window: {months: 12}, delta: abs, good: neutral}
+      - {type: stacked_bar, title: Reported fireballs per year, subtitle: Split by estimated impact energy, dataset: events, x: peak_time, grain: year, y: {agg: count}, series: size_band, series_order: [Kiloton and up, Tenth of a kiloton, Smaller], colors: ["#FFD08A", "#FFB347", "#B07A2E"], units: events, span: 8, height: 340}
+      - {type: bar, title: Where they burst, subtitle: Latitude band of the reported location, dataset: events, x: lat_band, orientation: horizontal, x_plural: bands, y: {agg: count}, units: events, span: 4, height: 340}
+  - title: Physics
+    widgets:
+      - {type: scatter, title: Speed vs burst altitude, subtitle: Faster bodies tend to break up higher, dataset: events, x: vel_kms, x_label: Entry speed, x_units: km/s, y: alt_km, units: km, label_field: peak_label, series: hemisphere, span: 6, height: 380}
+      - type: table
+        title: The biggest bangs
+        dataset: events
+        sort: {field: impact_kt, dir: desc}
+        limit: 10
+        span: 6
+        columns:
+          - {field: peak_label, label: Peak (UTC)}
+          - {field: location, label: Location, hide_mobile: true}
+          - {field: impact_kt, label: Impact energy, units: kt, format: {type: number, decimals: 2}}
+          - {field: alt_km, label: Altitude, units: km, format: {type: number, decimals: 1}}

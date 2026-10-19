@@ -1,0 +1,98 @@
+<!doctype html>
+<!-- frame-motion example 09 "NIGHT FERRY": map / route animation over a FICTIONAL archipelago. 10 s, 1920x1080, 96 BPM.
+     Seeded islands, a Catmull-Rom route resampled by arc length, a ferry that eases between stops, and one camera
+     that dives from the overview to the harbour, follows the ferry and pulls back out (zoom interpolated in log space).
+     Everything is projected to screen space inside seek(t), so strokes and labels stay crisp at any zoom.
+     One typeface (Familjen Grotesk, OFL). Deep teal sea, sand land, one orange. Places and times are invented. -->
+<html><head><meta charset="utf-8">
+<style>
+  @font-face{font-family:"Familjen Grotesk";src:url("../fonts/FamiljenGrotesk.woff2") format("woff2");font-weight:400 700;}
+  html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#0E3340}
+  #stage{position:absolute;inset:0;width:1920px;height:1080px;overflow:hidden;background:#0E3340;font-family:"Familjen Grotesk",sans-serif;color:#F3E9D6}
+  svg{position:absolute;left:0;top:0} text{font-family:"Familjen Grotesk",sans-serif}
+  .t{position:absolute;white-space:nowrap}
+  #panel{left:66px;top:60px;padding:24px 34px 18px 24px;background:#0E3340}
+  #panel .h{font-size:22px;font-weight:700;letter-spacing:4px;color:#FF7A3D;margin-bottom:14px}
+  .row{font-size:34px;font-weight:500;line-height:1.5}
+  .row span{display:inline-block;width:120px;color:#9FB7BC;font-weight:400}
+  #title{left:90px;top:812px;font-size:92px;font-weight:700;letter-spacing:-2px;line-height:1}
+  #title div{overflow:hidden;height:100px} #title span{display:inline-block}
+  #note{left:96px;top:1030px;font-size:20px;letter-spacing:2px;color:#9FB7BC}
+</style></head>
+<body><div id="stage">
+<svg id="svg" width="1920" height="1080"><g id="sea"></g><g id="land"></g><g id="route"></g><g id="ports"></g><g id="boat"></g></svg>
+<div class="t" id="panel"><div class="h">NIGHT FERRY · TIMETABLE</div>
+  <div class="row" id="r1"><span>22:10</span>Halde</div><div class="row" id="r2"><span>22:55</span>Vey</div><div class="row" id="r3"><span>23:40</span>Lunde</div></div>
+<div class="t" id="title"><div><span id="t1">Three stops,</span></div><div><span id="t2">one night.</span></div></div>
+<div class="t" id="note">INVENTED ISLANDS · INVENTED TIMETABLE</div>
+</div>
+<script>
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+const clamp=(x,a=0,b=1)=>Math.max(a,Math.min(b,x));
+const lerp=(a,b,p)=>a+(b-a)*p;
+const local=(t,t0,d)=>clamp((t-t0)/d);
+const expoOut=(p,k=8)=>p<=0?0:p>=1?1:(1-Math.exp(-k*p))/(1-Math.exp(-k));
+const expoInOut=(p,k=8)=>p<0.5?(1-expoOut(1-2*p,k))/2:(1+expoOut(2*p-1,k))/2;
+const springCD=(dt,w=18)=>dt<=0?0:1-Math.exp(-w*dt)*(1+w*dt);
+const zl=(a,b,p)=>Math.exp(lerp(Math.log(a),Math.log(b),p));
+const BPM=96, SPB=60/BPM, B=n=>n*SPB;
+const SEA='#0E3340', SAND='#E9DDC3', OR='#FF7A3D', PALE='#F3E9D6', MUTE='#9FB7BC';
+// ---- world (units = px at zoom 1 over a 3200 x 1800 world)
+const rnd=mulberry32(2207);
+const ISL=[[1500,500,190],[2050,820,250],[2680,430,190],[2720,1270,240],[1680,1330,160],[2280,1530,130],[3060,820,110],[1300,960,100]].map(([x,y,r],k)=>{
+  const ph=[...Array(5)].map(()=>rnd()*6.28), am=[...Array(5)].map((_,i)=>(0.22/(i+1))*(0.6+rnd()));
+  const pts=[]; for(let i=0;i<120;i++){ const a=i/120*6.2832; let rr=1; for(let h=0;h<5;h++) rr+=am[h]*Math.sin((h+2)*a+ph[h]); pts.push([x+Math.cos(a)*r*rr,y+Math.sin(a)*r*rr*0.82]); }
+  return {pts,k}; });
+// ports sit on island shores; route waypoints chosen through the channels
+// ports snap to the nearest shore point of their island, nudged 8 px out to sea
+function shore(k,x,y){ const I=ISL[k]; let b=null,bd=1e9; for(const p of I.pts){ const d=Math.hypot(p[0]-x,p[1]-y); if(d<bd){bd=d;b=p;} } const cx=I.pts.reduce((a,p)=>a+p[0],0)/120, cy=I.pts.reduce((a,p)=>a+p[1],0)/120; const L=Math.hypot(b[0]-cx,b[1]-cy); return [b[0]+(b[0]-cx)/L*8,b[1]+(b[1]-cy)/L*8]; }
+const HP=shore(0,1720,560), VP=shore(2,2440,470), LP=shore(3,2640,1000);
+const PORTS=[{n:'Halde',x:HP[0],y:HP[1]},{n:'Vey',x:VP[0],y:VP[1]},{n:'Lunde',x:LP[0],y:LP[1]}];
+const WP=[HP,[1820,470],[2050,410],[2300,420],VP,[2400,600],[2390,800],[2470,930],LP];
+// Catmull-Rom through the waypoints, then resample by arc length
+function cr(p0,p1,p2,p3,u){ const u2=u*u,u3=u2*u; return [0,1].map(k=>0.5*((2*p1[k])+(-p0[k]+p2[k])*u+(2*p0[k]-5*p1[k]+4*p2[k]-p3[k])*u2+(-p0[k]+3*p1[k]-3*p2[k]+p3[k])*u3)); }
+const RAW=[]; for(let i=0;i<WP.length-1;i++){ const p0=WP[Math.max(0,i-1)],p1=WP[i],p2=WP[i+1],p3=WP[Math.min(WP.length-1,i+2)]; for(let s=0;s<40;s++) RAW.push(cr(p0,p1,p2,p3,s/40)); } RAW.push(WP[WP.length-1]);
+const CUM=[0]; for(let i=1;i<RAW.length;i++) CUM.push(CUM[i-1]+Math.hypot(RAW[i][0]-RAW[i-1][0],RAW[i][1]-RAW[i-1][1])); const LEN=CUM[CUM.length-1];
+function at(d){ d=clamp(d,0,LEN); let lo=0,hi=CUM.length-1; while(hi-lo>1){ const m=(lo+hi)>>1; if(CUM[m]<=d) lo=m; else hi=m; } const u=(d-CUM[lo])/((CUM[hi]-CUM[lo])||1); return [lerp(RAW[lo][0],RAW[hi][0],u),lerp(RAW[lo][1],RAW[hi][1],u)]; }
+// arc length of the Vey stop
+let D_VEY=0,best=1e9; for(let i=0;i<RAW.length;i++){ const d=Math.hypot(RAW[i][0]-VP[0],RAW[i][1]-VP[1]); if(d<best){best=d;D_VEY=CUM[i];} }
+// ferry distance along the route: leg one b5 -> b9, short call at Vey, leg two b10 -> b14
+function dist(t){ return lerp(0,D_VEY,expoInOut(local(t,B(5),B(4)),4))+lerp(0,LEN-D_VEY,expoInOut(local(t,B(10),B(4)),4)); }
+// camera: overview -> harbour (b4) -> follow -> overview (b14)
+const OVER={x:1560,y:920,s:0.6};
+function camera(t){ const fer=at(dist(t)); const dive=expoInOut(local(t,B(3.5),B(1.5)),5), out=expoInOut(local(t,B(14),B(2)),5); const p=dive*(1-out);
+  return {x:lerp(OVER.x,fer[0]+120,p), y:lerp(OVER.y,fer[1]+40,p), s:zl(OVER.s,1.45,p)}; }
+const $=id=>document.getElementById(id);
+const land=$('land'),route=$('route'),ports=$('ports'),boat=$('boat');
+window.seek=function(t){
+  const c=camera(t); const S=([x,y])=>[960+(x-c.x)*c.s,540+(y-c.y)*c.s]; const P=a=>a.map(p=>{const q=S(p);return q[0].toFixed(1)+','+q[1].toFixed(1);}).join(' ');
+  // islands surface on b0..b1, staggered (scale about their centre, critically damped)
+  land.innerHTML=ISL.map((I,k)=>{ const sp=springCD(t+0.25-k*0.06,12); if(sp<=0.001) return ''; const cx=I.pts.reduce((a,p)=>a+p[0],0)/120, cy=I.pts.reduce((a,p)=>a+p[1],0)/120;
+    const pts=I.pts.map(p=>[cx+(p[0]-cx)*lerp(0.7,1,sp),cy+(p[1]-cy)*lerp(0.7,1,sp)]); return `<polygon points="${P(pts)}" fill="${SAND}" fill-opacity="${clamp(sp*1.4)}"/>`; }).join('');
+  // planned route: dotted, draws on b3; travelled part: solid orange up to the ferry
+  const plan=expoInOut(local(t,B(2.5),B(1.5)),4)*LEN, d=dist(t);
+  const pp=[]; for(let s=0;s<=plan;s+=8) pp.push(at(s)); const tp=[]; for(let s=0;s<=d;s+=6) tp.push(at(s)); tp.push(at(d));
+  route.innerHTML=(pp.length>1?`<polyline points="${P(pp)}" fill="none" stroke="${PALE}" stroke-opacity=".55" stroke-width="3" stroke-dasharray="2 12" stroke-linecap="round"/>`:'')+
+                  (t>B(5)&&tp.length>1?`<polyline points="${P(tp)}" fill="none" stroke="${OR}" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>`:'');
+  // ports pop on b2; the one just reached gets an orange ring
+  const reached=[t>=B(5), t>=B(9), t>=B(14)];
+  ports.innerHTML=PORTS.map((p,i)=>{ const sp=springCD(t-B(2)-i*0.08,18); const q=S([p.x,p.y]); const ring=reached[i]?springCD(t-[B(5),B(9),B(14)][i],14):0;
+    return `<circle cx="${q[0]}" cy="${q[1]}" r="${(10*sp).toFixed(2)}" fill="${SEA}" stroke="${PALE}" stroke-width="4"/>`+(ring>0?`<circle cx="${q[0]}" cy="${q[1]}" r="${(10+12*ring).toFixed(2)}" fill="none" stroke="${OR}" stroke-width="4"/>`:'')+
+           `<text x="${q[0]+26}" y="${q[1]-18}" font-size="${(30).toFixed(1)}" font-weight="700" fill="${PALE}" fill-opacity="${sp}" stroke="${SEA}" stroke-width="8" paint-order="stroke">${p.n}</text>`; }).join('');
+  // the ferry: an arrowhead aligned with the route tangent
+  if(t>=B(4.5)){ const a=at(d), b=at(Math.min(LEN,d+4)), a0=at(Math.max(0,d-4)); const ang=Math.atan2(b[1]-a0[1],b[0]-a0[0]); const q=S(a); const sp=springCD(t-B(4.5),18), sz=16*sp;
+    const pts=[[sz*1.4,0],[-sz,sz*0.9],[-sz*0.5,0],[-sz,-sz*0.9]].map(([x,y])=>[q[0]+x*Math.cos(ang)-y*Math.sin(ang),q[1]+x*Math.sin(ang)+y*Math.cos(ang)]);
+    boat.innerHTML=`<polygon points="${pts.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ')}" fill="${OR}" stroke="${SEA}" stroke-width="3"/>`; } else boat.innerHTML='';
+  // timetable rows: the next stop is pale, passed stops muted, upcoming hidden until b2
+  const rows=[$('r1'),$('r2'),$('r3')]; const st=[B(5),B(9),B(14)];
+  rows.forEach((r,i)=>{ const p=expoOut(local(t,B(1)+i*0.12,0.4)); r.style.opacity=p; r.style.transform=`translateX(${(1-p)*-30}px)`; r.style.color=(t>=st[i]&&i<2&&t>=st[i+1])?MUTE:(t>=st[i]?OR:PALE); });
+  $('panel').querySelector('.h').style.opacity=expoOut(local(t,B(0.5),0.4));
+  $('t1').style.transform=`translateY(${(1-springCD(t-B(14.5),14))*110}px)`; $('t2').style.transform=`translateY(${(1-springCD(t-B(15),14))*110}px)`;
+  $('note').style.opacity=expoOut(local(t,B(15.5),0.3));
+};
+// self-check used while authoring: route samples that fall inside an island (excluding the port ends)
+function inside(pt,poly){ let c=false; for(let i=0,j=poly.length-1;i<poly.length;j=i++){ const [xi,yi]=poly[i],[xj,yj]=poly[j]; if(((yi>pt[1])!==(yj>pt[1]))&&(pt[0]<(xj-xi)*(pt[1]-yi)/(yj-yi)+xi)) c=!c; } return c; }
+window.__routeOnLand=RAW.filter((p,i)=>i>3&&i<RAW.length-4&&ISL.some(I=>inside(p,I.pts))).length;
+window.seek(0);
+document.fonts.load('700 92px "Familjen Grotesk"').then(()=>document.fonts.load('500 34px "Familjen Grotesk"')).then(()=>{window.ready=true;});
+</script></body></html>

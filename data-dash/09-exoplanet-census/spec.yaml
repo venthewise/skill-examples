@@ -1,0 +1,58 @@
+# Real data: NASA Exoplanet Archive, Planetary Systems table, default parameter set (frozen snapshot).
+dashboard:
+  title: The exoplanet census
+  subtitle: How did we find thousands of planets around other stars, which instruments found them, and what kinds of worlds are they?
+  theme: light
+  colors: {accent: "#3B3B98", series: ["#3B3B98", "#C0392B", "#1E8449", "#B9770E", "#7D3C98", "#5D6D7E"]}
+  locale: en-GB
+  footnote: One row per confirmed planet from the Planetary Systems table (default parameter set). Methods are as recorded by the archive; transit surveys dominate because they find many planets at once. The period–radius view is log-scaled (base ten) so short-period hot Jupiters and long-period worlds fit on one chart. The current year is still being counted.
+
+sources:
+  pscomp:
+    type: snapshot
+    path: snapshots/planetary_systems.json
+    title: NASA Exoplanet Archive, Planetary Systems (ps, default parameter set)
+    licence: Free to use with acknowledgement (NASA Exoplanet Archive, Caltech/IPAC)
+
+datasets:
+  - id: planets
+    title: Confirmed exoplanets
+    description: Discovery year, method and facility with orbital period, radius and distance where known.
+    query: |
+      select pl_name as planet, hostname as host, make_date(disc_year, 1, 1) as disc_date, disc_year::varchar as year,
+             case when method in ('Transit', 'Radial Velocity', 'Microlensing', 'Imaging') then method else 'Other methods' end as method,
+             facility, orbital_period_days as period_d, radius_earth, mass_earth, distance_pc,
+             round(log10(orbital_period_days), 3) as log_period, round(log10(radius_earth), 3) as log_radius,
+             round(distance_pc * 3.26156, 1) as distance_ly,
+             case when radius_earth < 1.6 then 'Rocky-size' when radius_earth < 4 then 'Super-Earth to mini-Neptune' when radius_earth < 10 then 'Neptune-size' when radius_earth is not null then 'Jupiter-size' else 'Unknown size' end as size_class
+      from pscomp order by disc_year
+    date_column: disc_date
+    data_through: "2026-10-19"
+
+filters:
+  - {id: method, type: category, field: method, label: Discovery method, values: [Transit, Radial Velocity, Microlensing, Imaging, Other methods]}
+
+sections:
+  - title: Discovery
+    widgets:
+      - {type: kpi, title: Confirmed planets, dataset: planets, value: {agg: count}, units: planets, window: {years: 40}, delta: none}
+      - {type: kpi, title: Host stars, dataset: planets, value: {field: host, agg: distinct}, units: stars, window: {years: 40}, delta: none}
+      - {type: kpi, title: Nearest known, dataset: planets, value: {field: distance_ly, agg: min}, detail_field: planet, format: {type: number, decimals: 2}, units: light years, window: {years: 40}, delta: none}
+      - {type: stacked_bar, title: Discoveries per year, subtitle: The spikes are bulk releases from space transit surveys, dataset: planets, x: disc_date, grain: year, y: {agg: count}, series: method, series_order: [Transit, Radial Velocity, Microlensing, Imaging, Other methods], units: planets, span: 8, height: 360}
+      - {type: bar, title: Most productive facilities, dataset: planets, x: facility, orientation: horizontal, x_plural: facilities, y: {agg: count}, units: planets, limit: 8, span: 4, height: 360}
+  - title: Worlds
+    widgets:
+      - {type: scatter, title: Orbital period vs radius, subtitle: Log scales; each dot a planet, dataset: planets, x: log_period, x_label: Orbital period, x_units: log₁₀ days, y: log_radius, units: log₁₀ Earth radii, label_field: planet, series: method, series_order: [Transit, Radial Velocity, Microlensing, Imaging, Other methods], span: 8, height: 420}
+      - {type: bar, title: Planets by size class, dataset: planets, x: size_class, orientation: horizontal, x_plural: classes, y: {agg: count}, units: planets, span: 4, height: 420}
+      - type: table
+        title: Closest planetary systems
+        dataset: planets
+        sort: {field: distance_ly, dir: asc}
+        limit: 12
+        columns:
+          - {field: planet, label: Planet}
+          - {field: method, label: Method}
+          - {field: year, label: Found}
+          - {field: distance_ly, label: Distance, units: light years, format: {type: number, decimals: 2}}
+          - {field: radius_earth, label: Radius, units: Earth radii, format: {type: number, decimals: 2}, hide_mobile: true}
+          - {field: period_d, label: Period, units: days, format: {type: number, decimals: 1}, hide_mobile: true}

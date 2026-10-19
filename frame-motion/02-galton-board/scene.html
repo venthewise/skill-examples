@@ -1,0 +1,135 @@
+<!doctype html>
+<!-- frame-motion example 02 "CHANCE, STACKED": deterministic Canvas 2D physics. 8 s, 1920x1080, 120 BPM.
+     A Galton board: balls fall through twelve rows of pegs into bins and the bell curve appears on its own.
+     The whole simulation (gravity, peg and divider collisions, ball-ball contacts) runs ONCE at load with a
+     fixed time step and a seeded PRNG; seek(t) only interpolates the recorded positions, so it stays pure.
+     One typeface (JetBrains Mono, OFL), bone + one acid accent + grey on near-black. -->
+<html><head><meta charset="utf-8">
+<style>
+  @font-face{font-family:"JetBrains Mono";src:url("../fonts/JetBrainsMono.woff2") format("woff2");font-weight:100 800;}
+  html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#111214}
+  #stage{position:absolute;inset:0;width:1920px;height:1080px;overflow:hidden;background:#111214;font-family:"JetBrains Mono",monospace;color:#E9E4D8}
+  canvas{position:absolute;left:0;top:0}
+  .t{position:absolute;white-space:nowrap}
+  #count{left:1220px;top:250px;font-size:150px;font-weight:700;letter-spacing:-6px;line-height:1}
+  #countl{left:1226px;top:212px;font-size:26px;font-weight:500;color:#7D8088;letter-spacing:2px}
+  #title{left:1220px;top:640px;font-size:96px;font-weight:700;letter-spacing:-3px;line-height:1.02}
+  #title div{overflow:hidden;height:100px}
+  #title span{display:inline-block}
+  #cap{left:1226px;top:870px;font-size:26px;font-weight:400;color:#7D8088;letter-spacing:.5px;line-height:1.5}
+  #one{font-size:24px;font-weight:600;color:#E8FF3A;letter-spacing:1px}
+</style></head>
+<body><div id="stage">
+<canvas id="c" width="1920" height="1080"></canvas>
+<div class="t" id="countl">BALLS LANDED</div>
+<div class="t" id="count">0</div>
+<div class="t" id="one">one path</div>
+<div class="t" id="title"><div><span id="ti1">Chance,</span></div><div><span id="ti2">stacked.</span></div></div>
+<div class="t" id="cap">twelve rows of pegs<br>every ball a coin flip at each one<br>same seed, same pile, every render</div>
+</div>
+<script>
+const clamp=(x,a=0,b=1)=>Math.max(a,Math.min(b,x));
+const lerp=(a,b,p)=>a+(b-a)*p;
+const local=(t,t0,d)=>clamp((t-t0)/d);
+const expoOut=(p,k=8)=>p<=0?0:p>=1?1:(1-Math.exp(-k*p))/(1-Math.exp(-k));
+const springCD=(dt,w=18)=>dt<=0?0:1-Math.exp(-w*dt)*(1+w*dt);
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+// ---------- world ----------
+const CX=640, ROWS=12, PY0=200, PDY=40, PDX=46, PR=5, BR=7.2, FLOOR=1030, DIV_TOP=742;
+const PEGS=[]; for(let r=0;r<ROWS;r++) for(let k=0;k<=r;k++) PEGS.push({x:CX+(k-r/2)*PDX,y:PY0+r*PDY,r});
+const NB=ROWS+1, DIVS=[]; for(let k=0;k<=NB;k++) DIVS.push(CX+(k-NB/2)*PDX);
+const WALL_L=DIVS[0], WALL_R=DIVS[NB];
+const DT=1/240, DUR=8, STEPS=Math.round(DUR/DT)+1, NBALL=262, TRACK=24;
+const rnd=mulberry32(4242);
+const SPAWN=new Float32Array(NBALL); for(let i=0;i<NBALL;i++) SPAWN[i]=0.5+i*(3.0/NBALL);
+const PX=new Float32Array(NBALL*STEPS), PY=new Float32Array(NBALL*STEPS);
+(function simulate(){
+  const x=new Float32Array(NBALL), y=new Float32Array(NBALL), vx=new Float32Array(NBALL), vy=new Float32Array(NBALL), live=new Uint8Array(NBALL), bin=new Int8Array(NBALL).fill(-1);
+  const lo=k=>DIVS[k]+BR+1.5, hi=k=>DIVS[k+1]-BR-1.5;
+  function constrain(i){ if(bin[i]<0&&y[i]>DIV_TOP-BR){ bin[i]=clamp(Math.floor((x[i]-DIVS[0])/PDX),0,NB-1); }
+    if(bin[i]>=0){ const a=lo(bin[i]), b=hi(bin[i]); if(x[i]<a){x[i]=a;vx[i]=Math.abs(vx[i])*0.2;} if(x[i]>b){x[i]=b;vx[i]=-Math.abs(vx[i])*0.2;} }
+    if(y[i]>FLOOR-BR){y[i]=FLOOR-BR; if(vy[i]>0)vy[i]*=-0.1; vx[i]*=0.8;} }
+  for(let i=0;i<NBALL;i++){x[i]=CX+(rnd()-0.5)*6;y[i]=120;vx[i]=(rnd()-0.5)*30;vy[i]=60;}
+  const G=2600, E=0.15, CELL=16, GW=Math.ceil(1920/CELL);
+  for(let s=0;s<STEPS;s++){
+    const t=s*DT;
+    for(let i=0;i<NBALL;i++){ if(!live[i]&&t>=SPAWN[i]) live[i]=1; }
+    for(let i=0;i<NBALL;i++){ if(!live[i]) continue;
+      vy[i]+=G*DT; x[i]+=vx[i]*DT; y[i]+=vy[i]*DT;
+      // pegs: only the row(s) near this ball
+      const rr=Math.round((y[i]-PY0)/PDY);
+      for(let r=rr-1;r<=rr+1;r++){ if(r<0||r>=ROWS) continue; const k0=Math.round((x[i]-CX)/PDX+r/2);
+        for(let k=k0-1;k<=k0+1;k++){ if(k<0||k>r) continue; const px=CX+(k-r/2)*PDX, py=PY0+r*PDY;
+          const dx=x[i]-px, dy=y[i]-py, d=Math.hypot(dx,dy), m=BR+PR;
+          if(d<m&&d>1e-6){ const nx=dx/d, ny=dy/d; x[i]=px+nx*m; y[i]=py+ny*m; const vn=vx[i]*nx+vy[i]*ny;
+            if(vn<0){ vx[i]-=(1+E)*vn*nx; vy[i]-=(1+E)*vn*ny; vx[i]=Math.sign(vx[i]||nx)*Math.min(Math.abs(vx[i])*0.6,95); vy[i]*=0.8; } } } }
+      // keep balls inside the peg triangle (two slanted walls)
+      if(y[i]<DIV_TOP){ const rowf=clamp((y[i]-PY0)/PDY,0,ROWS); const half=(rowf/2+0.75)*PDX; if(x[i]<CX-half){x[i]=CX-half;vx[i]=Math.abs(vx[i])*0.3;} if(x[i]>CX+half){x[i]=CX+half;vx[i]=-Math.abs(vx[i])*0.3;} }
+      // dividers (vertical segments) and walls
+      if(x[i]<WALL_L+BR){x[i]=WALL_L+BR;vx[i]=Math.abs(vx[i])*0.3;} if(x[i]>WALL_R-BR){x[i]=WALL_R-BR;vx[i]=-Math.abs(vx[i])*0.3;}
+      constrain(i);
+    }
+    // ball-ball contacts via a uniform grid, two relaxation passes
+    for(let pass=0;pass<4;pass++){
+      const grid=new Map();
+      for(let i=0;i<NBALL;i++){ if(!live[i]) continue; const key=Math.floor(x[i]/CELL)+Math.floor(y[i]/CELL)*GW; let a=grid.get(key); if(!a){a=[];grid.set(key,a);} a.push(i); }
+      for(let i=0;i<NBALL;i++){ if(!live[i]) continue; const cx=Math.floor(x[i]/CELL), cy=Math.floor(y[i]/CELL);
+        for(let oy=-1;oy<=1;oy++) for(let ox=-1;ox<=1;ox++){ const a=grid.get(cx+ox+(cy+oy)*GW); if(!a) continue;
+          for(const j of a){ if(j<=i) continue; const dx=x[j]-x[i], dy=y[j]-y[i], d=Math.hypot(dx,dy), m=2*BR;
+            if(d<m&&d>1e-6){ const nx=dx/d, ny=dy/d, o=(m-d)/2; x[i]-=nx*o; y[i]-=ny*o; x[j]+=nx*o; y[j]+=ny*o;
+              const rv=(vx[j]-vx[i])*nx+(vy[j]-vy[i])*ny; if(rv<0){ const jj=-(1+0.1)*rv/2; vx[i]-=jj*nx; vy[i]-=jj*ny; vx[j]+=jj*nx; vy[j]+=jj*ny; } } } } }
+      for(let i=0;i<NBALL;i++) if(live[i]) constrain(i);
+    }
+    for(let i=0;i<NBALL;i++){ PX[i*STEPS+s]=live[i]?x[i]:CX; PY[i*STEPS+s]=live[i]?y[i]:-50; }
+  }
+})();
+// landed time per ball and final bin counts (precomputed, used for the counter and the curve)
+const LAND=new Float32Array(NBALL).fill(1e9), BINS=new Array(NB).fill(0);
+for(let i=0;i<NBALL;i++){ for(let s=0;s<STEPS;s++){ if(PY[i*STEPS+s]>DIV_TOP){LAND[i]=s*DT;break;} } const fx=PX[i*STEPS+STEPS-1]; BINS[clamp(Math.floor((fx-DIVS[0])/PDX),0,NB-1)]++; }
+const LANDS=[...LAND].sort((a,b)=>a-b);
+let PILE_TOP=FLOOR; for(let i=0;i<NBALL;i++){ const fy=PY[i*STEPS+STEPS-1]-BR; if(fy>DIV_TOP+10&&LAND[i]<DUR-1.5) PILE_TOP=Math.min(PILE_TOP,fy); }
+function pos(i,t){ const f=clamp(t,0,DUR)/DT, s=Math.min(STEPS-2,Math.floor(f)), u=f-s; return [lerp(PX[i*STEPS+s],PX[i*STEPS+s+1],u),lerp(PY[i*STEPS+s],PY[i*STEPS+s+1],u)]; }
+// ---------- drawing ----------
+const c=document.getElementById('c'), g=c.getContext('2d');
+const $=id=>document.getElementById(id);
+const count=$('count'),countl=$('countl'),one=$('one'),ti1=$('ti1'),ti2=$('ti2'),cap=$('cap');
+const BONE='#E9E4D8', ACID='#E8FF3A', GREY='#4A4D54';
+window.seek=function(t){
+  g.setTransform(1,0,0,1,0,0); g.fillStyle='#111214'; g.fillRect(0,0,1920,1080);
+  // pegs pop in row by row (b0), critically damped
+  g.fillStyle=GREY;
+  for(const p of PEGS){ const s=springCD(t+0.2-p.r*0.03,26); if(s<=0) continue; g.beginPath(); g.arc(p.x,p.y,PR*s,0,6.2832); g.fill(); }
+  // dividers grow up from the floor
+  g.strokeStyle=GREY; g.lineWidth=3;
+  DIVS.forEach((x,k)=>{ const s=expoOut(local(t,0.15+k*0.015,0.4)); g.beginPath(); g.moveTo(x,FLOOR); g.lineTo(x,lerp(FLOOR,DIV_TOP,s)); g.stroke(); });
+  g.beginPath(); g.moveTo(DIVS[0]-6,FLOOR+1.5); g.lineTo(lerp(DIVS[0]-6,DIVS[NB]+6,expoOut(local(t,0,0.5))),FLOOR+1.5); g.stroke();
+  // hopper
+  g.strokeStyle=BONE; g.lineWidth=3; const hp=expoOut(local(t,0.1,0.4));
+  g.beginPath(); g.moveTo(CX-60*hp,70); g.lineTo(CX-14,138); g.moveTo(CX+60*hp,70); g.lineTo(CX+14,138); g.stroke();
+  // the tracked ball's path, drawn as a trail up to t
+  if(t>SPAWN[TRACK]){ g.strokeStyle=ACID; g.lineWidth=2.5; g.beginPath(); const t0=SPAWN[TRACK];
+    for(let tt=t0;tt<=t;tt+=1/120){ const p=pos(TRACK,tt); if(tt===t0) g.moveTo(p[0],p[1]); else g.lineTo(p[0],p[1]); }
+    const pe=pos(TRACK,t); g.lineTo(pe[0],pe[1]); g.globalAlpha=1-0.65*local(t,4.5,1.0); g.stroke(); g.globalAlpha=1; }
+  // balls
+  for(let i=0;i<NBALL;i++){ if(t<SPAWN[i]) continue; const p=pos(i,t); g.fillStyle=i===TRACK?ACID:BONE; g.beginPath(); g.arc(p[0],p[1],BR-0.6,0,6.2832); g.fill(); }
+  // the binomial curve, drawn over the pile from b12 (6.0 s), scaled to the measured total
+  const cp=expoOut(local(t,6.0,0.9),5);
+  if(cp>0){ const total=BINS.reduce((a,b)=>a+b,0), perRow=Math.floor(PDX/(2*BR)), hb=n=>n/perRow*2*BR*0.88;
+    const choose=(n,k)=>{let r=1;for(let i=1;i<=k;i++)r=r*(n-k+i)/i;return r;};
+    g.strokeStyle=ACID; g.lineWidth=4; g.beginPath(); const xs=DIVS[0], xe=DIVS[NB], xm=lerp(xs,xe,cp);
+    for(let x=xs;x<=xm;x+=3){ const kf=(x-DIVS[0])/PDX-0.5; const sig=Math.sqrt(ROWS)/2, mu=ROWS/2; const pdf=Math.exp(-Math.pow(kf-mu,2)/(2*sig*sig))/(sig*Math.sqrt(2*Math.PI));
+      const pk=1/(sig*Math.sqrt(2*Math.PI)); const y=FLOOR-(FLOOR-PILE_TOP+6)*pdf/pk; if(x===xs) g.moveTo(x,y); else g.lineTo(x,y); } g.stroke(); }
+  // counter: number of balls past the divider tops
+  let landed=0; for(const L of LANDS){ if(L<=t) landed++; else break; }
+  count.textContent=String(landed);
+  const kp=expoOut(local(t,0.5,0.4)); count.style.opacity=kp; countl.style.opacity=kp; count.style.transform=`translateY(${(1-kp)*30}px)`;
+  // "one path" label rides beside the tracked ball until it lands, then stays
+  const tp=pos(TRACK,Math.min(t,LAND[TRACK]+0.6)); one.style.left=(tp[0]+18)+'px'; one.style.top=(tp[1]-34)+'px';
+  one.style.opacity=clamp(local(t,SPAWN[TRACK]+0.1,0.2))*(1-local(t,4.5,0.5));
+  // title, masked rise on b13 / b13.5
+  ti1.style.transform=`translateY(${(1-springCD(t-6.5,15))*110}px)`; ti2.style.transform=`translateY(${(1-springCD(t-6.75,15))*110}px)`;
+  const cpp=expoOut(local(t,7.0,0.4)); cap.style.opacity=cpp; cap.style.transform=`translateY(${(1-cpp)*16}px)`;
+};
+window.seek(0);
+document.fonts.load('700 150px "JetBrains Mono"').then(()=>document.fonts.load('400 26px "JetBrains Mono"')).then(()=>{window.ready=true;});
+</script></body></html>

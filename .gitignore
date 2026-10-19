@@ -1,0 +1,16 @@
+# build intermediates written by `dash.py all` / `refresh`
+data-dash/*/data/
+data-dash/*/.cache/
+data-dash/*/dashboard.pdf
+# frame-motion scratch output
+frame-motion/*/probe/
+frame-motion/*/beats/
+frame-motion/*/draft*.mp4
+frame-motion/*/silent.mp4
+frame-motion/*/*.wav
+# authoring scratch (not part of the examples)
+_raw/
+_tools/
+_checks/
+__pycache__/
+.DS_Store

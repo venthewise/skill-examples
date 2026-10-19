@@ -1,0 +1,84 @@
+# Real data: NOAA GML Mauna Loa monthly mean CO₂ (frozen snapshot, see README).
+dashboard:
+  title: The Keeling Curve, month by month
+  subtitle: How high is atmospheric CO₂ at Mauna Loa now, how fast is it still rising, and how big is the yearly breathing of the biosphere?
+  theme: light
+  colors: {accent: "#0B6E69", series: ["#0B6E69", "#B4530F", "#5F6B7A"]}
+  layout: {sections: stacked}
+  locale: en-GB
+  display_tz: America/New_York
+  footnote: Monthly means from the Mauna Loa Observatory record (Scripps from March 1958, NOAA since May 1974). The deseasonalized series removes the average seasonal cycle. Months with missing measurements carry interpolated values in the source.
+
+sources:
+  mlo:
+    type: snapshot
+    path: snapshots/co2_mm_mlo.json
+    title: NOAA GML Mauna Loa CO₂ monthly means
+    licence: NOAA GML, freely available (U.S. Government work)
+
+datasets:
+  - id: monthly
+    title: Monthly mean CO₂ (Mauna Loa)
+    description: One row per month. average_ppm is the monthly mean mole fraction in dry air; deseasonalized_ppm has the mean seasonal cycle removed.
+    query: |
+      select make_date(year, month, 1) as month_start,
+             last_day(make_date(year, month, 1)) as month_end,
+             strftime(make_date(year, month, 1), '%b') as month_name,
+             year::varchar as year, average_ppm as co2_ppm, deseasonalized_ppm as trend_ppm,
+             round(average_ppm - lag(average_ppm, 12) over (order by year, month), 2) as yoy_ppm,
+             make_date(year, month, 1) > (select max(make_date(year, month, 1)) from mlo) - interval 6 years as recent
+      from mlo order by month_start
+    date_column: month_start
+    data_through: {column: month_end}
+  - id: recent
+    title: Monthly mean CO₂, last six years
+    description: The same monthly series, limited to the most recent six years so the seasonal cycle is visible.
+    query: |
+      select make_date(year, month, 1) as month_start, last_day(make_date(year, month, 1)) as month_end,
+             average_ppm as co2_ppm, deseasonalized_ppm as trend_ppm
+      from mlo where make_date(year, month, 1) > (select max(make_date(year, month, 1)) from mlo) - interval 6 years
+      order by month_start
+    date_column: month_start
+    data_through: {column: month_end}
+  - id: annual
+    title: Annual growth (complete years)
+    description: Year-over-year change of the annual mean, complete calendar years only.
+    query: |
+      with y as (select year, avg(average_ppm) as mean_ppm, count(*) as n from mlo group by year having count(*) = 12)
+      select make_date(year, 1, 1) as year_start, make_date(year, 12, 31) as year_end, year::varchar as year,
+             round(mean_ppm, 2) as mean_ppm,
+             round(mean_ppm - lag(mean_ppm) over (order by year), 2) as growth_ppm
+      from y order by year
+    date_column: year_start
+    data_through: {column: year_end}
+
+filters:
+  - id: date
+    type: date_range
+    label: Month (UTC)
+    datasets: [monthly]
+    presets: [{label: All}, {label: Last ten years, years: 10}, {label: Last two years, years: 2}]
+
+sections:
+  - title: Now
+    widgets:
+      - {type: kpi, title: Latest monthly mean, dataset: monthly, value: {field: co2_ppm, agg: last}, format: {type: number, decimals: 2}, units: ppm, window: {months: 1}, delta: abs, good: down}
+      - {type: kpi, title: Twelve-month mean, dataset: monthly, value: {field: co2_ppm, agg: avg}, format: {type: number, decimals: 2}, units: ppm, window: {months: 12}, delta: abs, good: down}
+      - {type: kpi, title: Fastest annual rise, dataset: annual, value: {field: growth_ppm, agg: max}, detail_field: year, format: {type: number, decimals: 2}, units: ppm per year, window: {years: 70}, delta: none}
+      - {type: kpi, title: "Highest month, past year", dataset: monthly, value: {field: co2_ppm, agg: max}, detail_field: month_start, format: {type: number, decimals: 2}, units: ppm, window: {months: 12}, delta: abs, good: neutral}
+      - {type: line, title: The whole record, subtitle: Annual means of the monthly values; the latest year is still in progress, dataset: monthly, x: month_start, grain: year, y: [{field: co2_ppm, agg: avg, label: Monthly mean}, {field: trend_ppm, agg: avg, label: Deseasonalized}], format: {type: number, decimals: 1}, units: ppm, y_scale: true, span: 6, height: 320}
+      - {type: line, title: The last six years, subtitle: The sawtooth is the Northern Hemisphere growing season, dataset: recent, x: month_start, grain: month, y: [{field: co2_ppm, agg: avg, label: Monthly mean}, {field: trend_ppm, agg: avg, label: Deseasonalized}], format: {type: number, decimals: 1}, units: ppm, y_scale: true, span: 6, height: 320}
+  - title: The pace
+    widgets:
+      - {type: heatmap, title: Rise vs the same month a year earlier, subtitle: "Hot columns are El Niño years, when the land biosphere takes up less carbon", dataset: monthly, x: month_start, grain: year, y: month_name, y_order: [Jan, Feb, Mar, Apr, May, Jun, Jul, Aug, Sep, Oct, Nov, Dec], y_limit: 12, value: {field: yoy_ppm, agg: avg}, format: {type: number, decimals: 1}, units: ppm, span: 12}
+      - {type: bar, title: Annual growth, subtitle: Change of the annual mean vs the year before, dataset: annual, x: year_start, grain: year, y: {field: growth_ppm, agg: sum}, format: {type: number, decimals: 1}, units: ppm per year, span: 8, height: 340}
+      - type: table
+        title: Largest annual rises
+        dataset: annual
+        sort: {field: growth_ppm, dir: desc}
+        limit: 10
+        span: 4
+        columns:
+          - {field: year, label: Year}
+          - {field: mean_ppm, label: Annual mean, units: ppm, format: {type: number, decimals: 2}}
+          - {field: growth_ppm, label: Rise vs year before, units: ppm, format: {type: number, decimals: 2}}

@@ -1,0 +1,52 @@
+# Real data: Wikimedia REST pageviews API, English Wikipedia, user agents only (frozen snapshot).
+dashboard:
+  title: When the sky makes the news
+  subtitle: Which sky events sent people to English Wikipedia, and how sharply did curiosity spike and fade?
+  theme: dark
+  colors: {accent: "#B79CFF", series: ["#B79CFF", "#5FD3B4", "#FFB86B", "#FF7FA8", "#8FB7FF"]}
+  locale: en-GB
+  footnote: Daily page views of five English Wikipedia articles by human users (the API's user agent class), all access methods. Spikes line up with real events such as eclipses, geomagnetic storms and bright comets, but views also move with search-engine and news-feed placement.
+
+sources:
+  wp:
+    type: snapshot
+    path: snapshots/pageviews.json
+    title: Wikimedia REST API, per-article daily pageviews
+    licence: CC0 (Wikimedia Foundation)
+
+datasets:
+  - id: views
+    title: Daily page views by article
+    description: One row per article per day.
+    query: |
+      select replace(article, '_', ' ') as article, strptime(day, '%Y%m%d')::date as day, views, views / 1000.0 as views_k,
+             strftime(strptime(day, '%Y%m%d'), '%Y-%m-%d') as day_label
+      from wp order by day
+    date_column: day
+    data_through: {column: day}
+
+filters:
+  - {id: article, type: category, field: article, label: Article}
+  - {id: date, type: date_range, label: Day (UTC), presets: [{label: All}, {label: Last six months, months: 6}]}
+
+sections:
+  - title: Spikes
+    widgets:
+      - {type: kpi, title: Views, dataset: views, value: {field: views, agg: sum}, units: views, window: {days: 30}, delta: pct, good: neutral}
+      - {type: kpi, title: Busiest single day, dataset: views, value: {field: views, agg: max}, detail_field: article, units: views, window: {months: 12}, delta: none}
+      - {type: kpi, title: Typical day, dataset: views, value: {field: views, agg: median}, units: views per article, window: {days: 30}, delta: pct, good: neutral}
+      - {type: line, title: Daily views, subtitle: Hover a spike to see the date, dataset: views, x: day, grain: day, y: {field: views, agg: sum}, series: article, units: views, span: 12, height: 360}
+      - {type: heatmap, title: Attention by month, dataset: views, x: day, grain: month, y: article, value: {field: views, agg: sum}, units: views, span: 12}
+  - title: Days
+    widgets:
+      - {type: bar, title: Total attention, dataset: views, x: article, orientation: horizontal, x_plural: articles, y: {field: views_k, agg: sum}, format: {type: number, decimals: 0}, units: thousand views, span: 5, height: 420}
+      - type: table
+        title: The biggest days
+        dataset: views
+        sort: {field: views, dir: desc}
+        limit: 12
+        span: 7
+        columns:
+          - {field: day_label, label: Day (UTC)}
+          - {field: article, label: Article}
+          - {field: views, label: Day total, units: views, format: {type: number, decimals: 0}}

@@ -1,0 +1,68 @@
+<!doctype html>
+<!-- frame-motion example 10 "SLOW": typographic poster in motion for a FICTIONAL festival. 9 s, 1080x1350 (4:5), 80 BPM.
+     The four giant letters arrive one per beat on deliberately soft critically damped springs and keep gaining
+     weight (variable font wght axis) for the whole piece, while every small line snaps in fast on its beat:
+     slow against quick. Hairline poster grid drawn first. Pure seek(t).
+     One typeface (Bodoni Moda, OFL, variable opsz + wght). Red, cream, black. -->
+<html><head><meta charset="utf-8">
+<style>
+  @font-face{font-family:"Bodoni Moda";src:url("../fonts/BodoniModa.woff2") format("woff2");font-weight:400 900;}
+  html,body{margin:0;width:1080px;height:1350px;overflow:hidden;background:#B3261E}
+  #stage{position:absolute;inset:0;width:1080px;height:1350px;overflow:hidden;background:#B3261E;font-family:"Bodoni Moda",serif;color:#F4EBDD}
+  .t{position:absolute;white-space:nowrap}
+  .hl{position:absolute;background:#141010}
+  .big{position:absolute;font-size:530px;line-height:.7;width:470px;clip-path:inset(0 -300px 0 -300px)}
+  .big span{position:absolute;left:50%;bottom:22px;display:block;white-space:nowrap}
+  .sm{font-size:30px;font-weight:600;letter-spacing:3px;font-variation-settings:"opsz" 11}
+  #what{left:60px;top:58px} #ed{right:60px;top:58px;text-align:right}
+  #name{left:56px;top:1098px;font-size:96px;font-weight:500;letter-spacing:-2px;line-height:1;font-variation-settings:"opsz" 96}
+  #name span{display:inline-block}
+  #info{left:60px;top:1240px;font-size:28px;font-weight:600;letter-spacing:2px;color:#141010;font-variation-settings:"opsz" 11}
+  #fic{right:60px;top:1150px;font-size:22px;font-weight:600;letter-spacing:2px;color:#141010;font-variation-settings:"opsz" 11}
+</style></head>
+<body><div id="stage">
+  <div class="hl" id="h1" style="left:60px;top:110px;height:2px"></div>
+  <div class="hl" id="h2" style="left:60px;top:1080px;height:2px"></div>
+  <div class="hl" id="h3" style="left:540px;top:110px;width:2px"></div>
+  <div class="hl" id="h4" style="left:60px;top:1222px;height:2px"></div>
+  <div class="big" id="b1" style="left:64px;top:112px;height:478px"><span>S</span></div>
+  <div class="big" id="b2" style="left:546px;top:112px;height:478px"><span>L</span></div>
+  <div class="big" id="b3" style="left:64px;top:592px;height:488px"><span>O</span></div>
+  <div class="big" id="b4" style="left:546px;top:592px;height:488px"><span>W</span></div>
+  <div class="t sm" id="what">A FESTIVAL OF</div>
+  <div class="t sm" id="ed">ELEVENTH EDITION</div>
+  <div class="t" id="name"></div>
+  <div class="t" id="info">AUGUST · HALDE HARBOUR · FREE ENTRY</div>
+  <div class="t" id="fic">A FICTIONAL FESTIVAL</div>
+</div>
+<script>
+const clamp=(x,a=0,b=1)=>Math.max(a,Math.min(b,x));
+const lerp=(a,b,p)=>a+(b-a)*p;
+const local=(t,t0,d)=>clamp((t-t0)/d);
+const expoOut=(p,k=8)=>p<=0?0:p>=1?1:(1-Math.exp(-k*p))/(1-Math.exp(-k));
+const expoInOut=(p,k=8)=>p<0.5?(1-expoOut(1-2*p,k))/2:(1+expoOut(2*p-1,k))/2;
+const springCD=(dt,w=18)=>dt<=0?0:1-Math.exp(-w*dt)*(1+w*dt);
+const BPM=80, SPB=60/BPM, B=n=>n*SPB;
+const $=id=>document.getElementById(id);
+const name=$('name'); const NW=[...'slow things.'].map(c=>{const s=document.createElement('span');s.textContent=c===' '?'\u00a0':c;name.appendChild(s);return s;});
+const BIG=['b1','b2','b3','b4'].map(id=>$(id).firstElementChild);
+window.seek=function(t){
+  // b0: hairline grid draws fast
+  const g1=expoOut(local(t,-0.35,SPB*0.8),7);
+  $('h1').style.width=(960*g1)+'px'; $('h2').style.width=(960*expoOut(local(t,-0.25,SPB*0.8),7))+'px'; $('h4').style.width=(960*expoOut(local(t,-0.15,SPB*0.8),7))+'px';
+  $('h3').style.height=(970*expoOut(local(t,-0.2,SPB*0.9),7))+'px';
+  // the four letters: one per beat from b1, soft springs (w = 4.5, deliberately slow), weight keeps climbing to the end
+  BIG.forEach((el,i)=>{ const t0=B(0.5+i); const p=springCD(t-t0,4.5);
+    el.style.transform=`translate(-50%,${(1-p)*520}px)`;
+    const w=lerp(400,900,clamp((t-t0)/(9-t0)));
+    el.style.fontVariationSettings=`"wght" ${w.toFixed(1)}, "opsz" 96`; });
+  // quick things: each snaps on its beat with a stiff spring
+  const q=(id,n,dy)=>{ const p=springCD(t-B(n),30); const el=$(id); el.style.opacity=clamp(p*3); el.style.transform=`translateY(${(1-p)*dy}px)`; };
+  q('what',-0.2,-20); q('ed',-0.2,-20);
+  NW.forEach((s,i)=>{ const p=springCD(t-(B(6)+i*0.035),30); s.style.transform=`translateY(${(1-p)*110}px)`; s.style.opacity=clamp(p*3); });
+  name.style.clipPath='inset(-20px -20px 0 -20px)';
+  q('info',8,24); q('fic',9,24);
+};
+window.seek(0);
+Promise.all([document.fonts.load('900 600px "Bodoni Moda"'),document.fonts.load('600 30px "Bodoni Moda"')]).then(()=>{window.ready=true;});
+</script></body></html>

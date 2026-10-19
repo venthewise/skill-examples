@@ -1,0 +1,64 @@
+# Real data: NASA GISS GISTEMP v4 global land-ocean monthly anomalies (frozen snapshot).
+dashboard:
+  title: Every month since the jet age, warmer
+  subtitle: How far above the late-nineteenth-century baseline has each month of global surface temperature been, and which years stand out?
+  theme: dark
+  colors: {accent: "#FF8A66", heatLow: "#1D2129", series: ["#FF8A66", "#A8B3C2", "#7EA6FF"]}
+  layout: {sections: tabs}
+  locale: en-GB
+  footnote: GISTEMP reports anomalies against its standard reference period; this dashboard rebases them in SQL to the mean of the earliest three decades of the record (the late-nineteenth-century baseline), so values read as warming since then. Recent months can still be revised.
+
+sources:
+  gis:
+    type: snapshot
+    path: snapshots/gistemp_v4_glb.json
+    title: NASA GISS GISTEMP v4, global land-ocean monthly means
+    licence: Public domain (NASA, U.S. Government work)
+
+datasets:
+  - id: monthly
+    title: Monthly global anomaly vs late-nineteenth-century baseline
+    description: GISTEMP v4 monthly anomalies, unpivoted from the wide table and rebased to the mean of the record's first three decades.
+    query: |
+      with long as (
+        unpivot gis on Jan, Feb, Mar, Apr, May, Jun, Jul, Aug, Sep, Oct, Nov, Dec into name mon value anom
+      ), m as (
+        select Year as year, mon,
+               strptime(Year::varchar || '-' || mon || '-01', '%Y-%b-%d')::date as month_start, anom from long where anom is not null
+      ), base as (select avg(anom) as b from m where year < (select min(year) + 30 from m))
+      select month_start, last_day(month_start) as month_end, year, mon as month_name,
+             round(anom - (select b from base), 3) as anomaly_c
+      from m where year >= 1950 order by month_start
+    date_column: month_start
+    data_through: {column: month_end}
+  - id: annual
+    title: Annual mean anomaly (complete years)
+    description: Mean of the twelve rebased monthly values, complete years only.
+    query: |
+      with long as (unpivot gis on Jan, Feb, Mar, Apr, May, Jun, Jul, Aug, Sep, Oct, Nov, Dec into name mon value anom),
+      base as (select avg(anom) as b from long where Year < (select min(Year) + 30 from gis) and anom is not null)
+      select make_date(Year, 1, 1) as year_start, make_date(Year, 12, 31) as year_end, Year::varchar as year,
+             round(avg(anom) - (select b from base), 3) as anomaly_c
+      from long where anom is not null group by Year having count(*) = 12 order by Year
+    date_column: year_start
+    data_through: {column: year_end}
+
+sections:
+  - title: Stripes
+    widgets:
+      - {type: kpi, title: Last twelve months, dataset: monthly, value: {field: anomaly_c, agg: avg}, format: {type: number, decimals: 2}, units: °C above baseline, window: {months: 12}, delta: abs, good: down}
+      - {type: kpi, title: Warmest month on record, dataset: monthly, value: {field: anomaly_c, agg: max}, detail_field: month_start, format: {type: number, decimals: 2}, units: °C, window: {years: 80}, delta: none}
+      - {type: kpi, title: Warmest complete year, dataset: annual, value: {field: anomaly_c, agg: max}, detail_field: year, format: {type: number, decimals: 2}, units: °C, window: {years: 80}, delta: none}
+      - {type: heatmap, title: Monthly anomaly by year, subtitle: "Months top to bottom, years left to right", dataset: monthly, x: month_start, grain: year, y: month_name, y_order: [Jan, Feb, Mar, Apr, May, Jun, Jul, Aug, Sep, Oct, Nov, Dec], y_limit: 12, value: {field: anomaly_c, agg: avg}, format: {type: number, decimals: 1}, units: °C, span: 12}
+  - title: Trend
+    widgets:
+      - {type: line, title: Annual mean anomaly, dataset: annual, x: year_start, grain: year, y: {field: anomaly_c, agg: avg, label: Annual mean}, format: {type: number, decimals: 2}, units: °C above baseline, span: 8, height: 340}
+      - type: table
+        title: Warmest years
+        dataset: annual
+        sort: {field: anomaly_c, dir: desc}
+        limit: 10
+        span: 4
+        columns:
+          - {field: year, label: Year}
+          - {field: anomaly_c, label: Anomaly, units: °C, format: {type: number, decimals: 2}}

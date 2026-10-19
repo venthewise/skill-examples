@@ -1,0 +1,50 @@
+<!doctype html>
+<!-- frame-motion example 07 "NO SEAM": loop-perfect 1:1 piece. 6 s loop, 1080x1080, 120 BPM (12 beats).
+     A seeded Truchet field (quarter-circle tiles) where diagonal waves turn every tile through 180 degrees,
+     which maps the tile onto itself, so the end frame equals the start frame. Every motion is a function of the
+     loop phase (t / D mod 1), so position AND velocity match at the seam; checked with `render.py loop`.
+     One typeface (Unbounded, OFL). Navy, yellow, coral. -->
+<html><head><meta charset="utf-8">
+<style>
+  @font-face{font-family:"Unbounded";src:url("../fonts/Unbounded.woff2") format("woff2");font-weight:200 900;}
+  html,body{margin:0;width:1080px;height:1080px;overflow:hidden;background:#1B2340}
+  #stage{position:absolute;inset:0;width:1080px;height:1080px;overflow:hidden;background:#1B2340;font-family:"Unbounded",sans-serif}
+  canvas{position:absolute;left:0;top:0}
+  #lab{position:absolute;left:54px;top:968px;padding:14px 22px;background:#1B2340;color:#F4D35E;font-size:30px;font-weight:700;letter-spacing:2px;white-space:nowrap}
+  #lab span{color:#EE6C4D}
+</style></head>
+<body><div id="stage"><canvas id="c" width="1080" height="1080"></canvas><div id="lab">NO SEAM<span> · </span>AGAIN</div></div>
+<script>
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+const D=6, N=8, CELL=1080/N, LW=24;
+const NAVY='#1B2340', YEL='#F4D35E', COR='#EE6C4D';
+const rnd=mulberry32(77);
+const TILES=[]; for(let j=0;j<N;j++) for(let i=0;i<N;i++) TILES.push({i,j,o:rnd()<0.5?0:1,c:rnd()<0.18?COR:YEL});
+// smooth 0->1 step whose velocity is zero at both ends (so a tile at rest has zero speed)
+const smooth=u=>u<=0?0:u>=1?1:u*u*u*(u*(u*6-15)+10);
+// two diagonal waves per loop, travelling in opposite directions; each turns a tile by 90 deg, two of them = 180 deg
+function angle(tile,ph){
+  const d1=(tile.i+tile.j)/(2*(N-1)), d2=(tile.i+(N-1-tile.j))/(2*(N-1));
+  const w=0.22;
+  const u1=((ph-d1*0.42)%1+1)%1, u2=((ph-0.5-d2*0.42)%1+1)%1;
+  return (smooth(u1/w)+smooth(u2/w))*Math.PI/2;
+}
+const g=document.getElementById('c').getContext('2d');
+window.seek=function(t){
+  const ph=((t/D)%1+1)%1;
+  g.fillStyle=NAVY; g.fillRect(0,0,1080,1080);
+  g.lineCap='butt'; g.lineWidth=LW;
+  for(const T of TILES){
+    const cx=(T.i+0.5)*CELL, cy=(T.j+0.5)*CELL;
+    // 90 deg turns change the tile; base orientation flips each quarter so two quarters = identity
+    const a=angle(T,ph)+(T.o?Math.PI/2:0);
+    g.save(); g.translate(cx,cy); g.rotate(a); g.strokeStyle=T.c;
+    const h=CELL/2;
+    g.beginPath(); g.arc(-h,-h,h,0,Math.PI/2); g.stroke();
+    g.beginPath(); g.arc(h,h,h,Math.PI,Math.PI*1.5); g.stroke();
+    g.restore();
+  }
+};
+window.seek(0);
+document.fonts.load('700 30px Unbounded').then(()=>{window.ready=true;});
+</script></body></html>

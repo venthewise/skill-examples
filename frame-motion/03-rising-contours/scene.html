@@ -1,0 +1,90 @@
+<!doctype html>
+<!-- frame-motion example 03 "RISING CONTOURS": a WebGL fragment-shader scene. 8 s, 1920x804 (2.39:1), 96 BPM.
+     A topographic map of an invented coastline is computed per pixel (hash value-noise fbm). The water level
+     steps up every two beats on a critically damped spring and swallows contour after contour.
+     Render with --webgl (SwiftShader) and preserveDrawingBuffer. Pure seek(t): uniforms come from t only.
+     Colours: ink, cream, cobalt (flat fills, no gradients or glow). One typeface: Syne (OFL). Illustrative, not a forecast. -->
+<html><head><meta charset="utf-8">
+<style>
+  @font-face{font-family:"Syne";src:url("../fonts/Syne.woff2") format("woff2");font-weight:400 800;}
+  html,body{margin:0;width:1920px;height:804px;overflow:hidden;background:#10151C}
+  #stage{position:absolute;inset:0;width:1920px;height:804px;overflow:hidden;background:#10151C;font-family:"Syne",sans-serif;color:#E8E1D3}
+  canvas{position:absolute;left:0;top:0;width:1920px;height:804px}
+  .t{position:absolute;white-space:nowrap}
+  #lvl{left:96px;top:600px;font-size:118px;font-weight:800;letter-spacing:-3px;line-height:1}
+  #lvll{left:100px;top:566px;font-size:24px;font-weight:600;letter-spacing:4px}
+  #title{right:96px;top:84px;text-align:right;font-size:64px;font-weight:700;letter-spacing:-1px;line-height:1.05}
+  #title div{overflow:hidden;height:70px} #title span{display:inline-block}
+  #note{right:100px;top:700px;font-size:22px;font-weight:500;letter-spacing:2px;opacity:.8}
+  .bg{background:#10151C;padding:2px 10px}
+</style></head>
+<body><div id="stage">
+<canvas id="c" width="1920" height="804"></canvas>
+<div class="t" id="lvll"><span class="bg">SEA LEVEL</span></div>
+<div class="t" id="lvl"><span class="bg" id="lvn">+0.0 m</span></div>
+<div class="t" id="title"><div><span class="bg" id="a1">every contour</span></div><div><span class="bg" id="a2">is a future coastline</span></div></div>
+<div class="t" id="note"><span class="bg">ILLUSTRATIVE TERRAIN · NOT A FORECAST</span></div>
+</div>
+<script id="fs" type="x-shader/x-fragment">#version 300 es
+precision highp float;
+uniform vec2 R; uniform float T; uniform float L; uniform float PAN; uniform float REVEAL;
+out vec4 o;
+float h21(vec2 p){ p=fract(p*vec2(123.34,456.21)); p+=dot(p,p+45.32); return fract(p.x*p.y); }
+float vn(vec2 p){ vec2 i=floor(p), f=fract(p); vec2 u=f*f*(3.0-2.0*f);
+  return mix(mix(h21(i),h21(i+vec2(1,0)),u.x),mix(h21(i+vec2(0,1)),h21(i+vec2(1,1)),u.x),u.y); }
+float fbm(vec2 p){ float a=0.5, s=0.0; for(int i=0;i<6;i++){ s+=a*vn(p); p=mat2(1.6,1.2,-1.2,1.6)*p+vec2(3.1,1.7); a*=0.5; } return s; }
+void main(){
+  vec2 uv=gl_FragCoord.xy/R.y; uv.y=1.0-uv.y+0.0;
+  vec2 p=uv*2.2+vec2(PAN,0.35);
+  // land rises towards the upper right, plus fbm relief: height in [0,1]
+  float h=fbm(p)*0.85+0.42*(uv.x/(R.x/R.y))-0.30*uv.y+0.18;
+  vec3 ink=vec3(0.063,0.082,0.110), cream=vec3(0.910,0.882,0.827), cob=vec3(0.239,0.353,0.996);
+  float k=18.0, c=h*k; float fw=fwidth(c);
+  float line=1.0-smoothstep(0.0,fw*1.2,abs(fract(c-0.5)-0.5));
+  float major=1.0-smoothstep(0.0,fw*2.2,abs(fract(c/5.0-0.5)-0.5)*5.0);
+  vec3 col=ink;
+  float wet=step(h,L);
+  // land: cream contour lines on ink; every fifth contour heavier
+  col=mix(col,cream*0.55,line*REVEAL); col=mix(col,cream,major*REVEAL);
+  // water: flat cobalt, the drowned contours stay visible as ink lines
+  vec3 wcol=mix(cob,ink,line*0.55);
+  col=mix(col,wcol,wet);
+  // shoreline: thick cream line where h crosses L
+  float sd=abs(h-L)/fwidth(h); col=mix(col,cream,1.0-smoothstep(1.2,2.6,sd));
+  o=vec4(col,1.0);
+}
+</script>
+<script>
+const clamp=(x,a=0,b=1)=>Math.max(a,Math.min(b,x));
+const lerp=(a,b,p)=>a+(b-a)*p;
+const local=(t,t0,d)=>clamp((t-t0)/d);
+const expoOut=(p,k=8)=>p<=0?0:p>=1?1:(1-Math.exp(-k*p))/(1-Math.exp(-k));
+const springCD=(dt,w=18)=>dt<=0?0:1-Math.exp(-w*dt)*(1+w*dt);
+const BPM=96, SPB=60/BPM, B=n=>n*SPB;
+const c=document.getElementById('c');
+const gl=c.getContext('webgl2',{preserveDrawingBuffer:true,antialias:false});
+const vs=`#version 300 es
+in vec2 a; void main(){ gl_Position=vec4(a,0.0,1.0); }`;
+function sh(type,src){const s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))throw gl.getShaderInfoLog(s);return s;}
+const pr=gl.createProgram(); gl.attachShader(pr,sh(gl.VERTEX_SHADER,vs)); gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,document.getElementById('fs').textContent)); gl.linkProgram(pr); gl.useProgram(pr);
+const buf=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,buf); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);
+const al=gl.getAttribLocation(pr,'a'); gl.enableVertexAttribArray(al); gl.vertexAttribPointer(al,2,gl.FLOAT,false,0,0);
+const U=n=>gl.getUniformLocation(pr,n), uR=U('R'),uT=U('T'),uL=U('L'),uP=U('PAN'),uV=U('REVEAL');
+gl.viewport(0,0,1920,804);
+// water steps: every two beats from b2, five steps; each step one "metre" (illustrative units)
+const STEPS=[2,4,6,8,10].map(B), L0=0.40, DL=0.045;
+const lvn=document.getElementById('lvn'), a1=document.getElementById('a1'), a2=document.getElementById('a2');
+const ui=[...document.querySelectorAll('#lvll,#lvl,#note')];
+window.seek=function(t){
+  let level=0; STEPS.forEach(s=>{level+=springCD(t-s,9);});
+  gl.uniform2f(uR,1920,804); gl.uniform1f(uT,t); gl.uniform1f(uL,L0+DL*level);
+  gl.uniform1f(uP,lerp(0,0.55,t/8)); gl.uniform1f(uV,expoOut(local(t,0,B(1.5)),4));
+  gl.drawArrays(gl.TRIANGLES,0,3); gl.finish();
+  // the counter ticks to the step it is heading for, on the beat it starts
+  const n=STEPS.filter(s=>t>=s).length; lvn.textContent='+'+(n*0.5).toFixed(1)+' m';
+  const up=expoOut(local(t,B(1),0.4)); ui.forEach(e=>{e.style.opacity=up;});
+  a1.style.transform=`translateY(${(1-springCD(t-B(11),14))*80}px)`; a2.style.transform=`translateY(${(1-springCD(t-B(11.5),14))*80}px)`;
+};
+window.seek(0);
+document.fonts.load('800 118px Syne').then(()=>document.fonts.load('600 24px Syne')).then(()=>{window.ready=true;});
+</script></body></html>
